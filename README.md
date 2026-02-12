@@ -32,7 +32,7 @@ Mission Control is a task management system that lets you create tasks, plan the
 │  ┌─────────────────┐         ┌─────────────────────────────┐   │
 │  │ Mission Control │ ◄─────► │     OpenClaw Gateway        │   │
 │  │   (Next.js)     │   WS    │  (AI Agent Runtime)         │   │
-│  │   Port 3000     │         │  Port 18789                 │   │
+│  │   Port 17789     │         │  Port 18789                 │   │
 │  └─────────────────┘         └─────────────────────────────┘   │
 │         │                              │                        │
 │         ▼                              ▼                        │
@@ -110,7 +110,7 @@ OPENCLAW_GATEWAY_URL=ws://127.0.0.1:18789
 OPENCLAW_GATEWAY_TOKEN=your-openclaw-token-here
 
 # Optional: Custom port for Mission Control
-PORT=3000
+PORT=17789
 ```
 
 **How to get these values:**
@@ -145,12 +145,12 @@ npm run dev
 You should see:
 ```
 ▲ Next.js 15.x.x
-- Local: http://localhost:3000
+- Local: http://localhost:17789
 ```
 
 ### Step 6: Open in Browser
 
-Go to: **http://localhost:3000**
+Go to: **http://localhost:17789**
 
 🎉 You should see the Mission Control dashboard!
 
@@ -201,7 +201,7 @@ You can drag tasks between columns manually, or let the system auto-advance them
 |----------|----------|---------|-------------|
 | `OPENCLAW_GATEWAY_URL` | Yes | `ws://127.0.0.1:18789` | WebSocket URL to OpenClaw Gateway |
 | `OPENCLAW_GATEWAY_TOKEN` | Yes | - | Authentication token for OpenClaw |
-| `PORT` | No | `3000` | Port for Mission Control web server |
+| `PORT` | No | `17789` | Port for Mission Control web server |
 
 ### OpenClaw Configuration
 
@@ -340,8 +340,8 @@ SELECT * FROM tasks;
 ### Port Already in Use
 
 ```bash
-# Find what's using port 3000
-lsof -i :3000
+# Find what's using port 17789
+lsof -i :17789
 
 # Kill it (replace PID with the actual number)
 kill -9 PID
