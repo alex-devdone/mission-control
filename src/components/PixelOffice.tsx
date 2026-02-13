@@ -1,7 +1,45 @@
 'use client';
 
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { SkipBack, SkipForward, Play, Pause } from 'lucide-react';
 import { useMissionControl } from '@/lib/store';
-import type { Agent, Task } from '@/lib/types';
+import type { Agent } from '@/lib/types';
+
+// --- Snapshot types ---
+interface SnapshotAgent {
+  agent_id: string;
+  agent_name: string;
+  status: string;
+  avatar_emoji: string;
+  model: string;
+  limit_5h: number;
+  limit_week: number;
+  task_id: string | null;
+  task_title: string | null;
+}
+
+interface Snapshot {
+  time: string;
+  agents: SnapshotAgent[];
+}
+
+// Convert snapshot agent to Agent-like object for rendering
+function toDisplayAgent(sa: SnapshotAgent): Agent {
+  return {
+    id: sa.agent_id,
+    name: sa.agent_name,
+    role: '',
+    avatar_emoji: sa.avatar_emoji || '🤖',
+    status: sa.status as Agent['status'],
+    is_master: false,
+    workspace_id: '',
+    model: sa.model,
+    limit_5h: sa.limit_5h,
+    limit_week: sa.limit_week,
+    created_at: '',
+    updated_at: '',
+  };
+}
 
 // Pixel HP bar (game-style life bar)
 function PixelHealthBar({ percentage, weekPercentage }: { percentage: number; weekPercentage?: number | null }) {
@@ -102,14 +140,14 @@ function PixelCharacter({ agent, isWorking }: { agent: Agent; isWorking: boolean
   );
 }
 
-function WorkingAgent({ agent, task }: { agent: Agent; task?: Task }) {
+function WorkingAgent({ agent, taskTitle }: { agent: Agent; taskTitle?: string }) {
   return (
     <div className="flex flex-col items-center gap-2">
       <PixelCharacter agent={agent} isWorking={true} />
       <PixelDesk />
-      {task && (
+      {taskTitle && (
         <div className="max-w-[120px] mt-1 px-2 py-1 bg-[#1a1a2e]/80 border border-[#3a3a4a] rounded text-[8px] text-mc-text-secondary text-center truncate">
-          {task.title}
+          {taskTitle}
         </div>
       )}
     </div>
@@ -124,6 +162,195 @@ function IdleAgent({ agent }: { agent: Agent }) {
   );
 }
 
+// --- Time Travel Timeline ---
+function parseSnapshotTime(raw: string): Date {
+  // Handle both ISO strings (2026-02-14T12:30:00.123Z) and SQLite datetime (2026-02-14 12:30:00)
+  if (raw.includes('T')) return new Date(raw);
+  return new Date(raw.replace(' ', 'T') + 'Z');
+}
+
+function formatTime(raw: string): string {
+  return parseSnapshotTime(raw).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+}
+
+function formatDate(raw: string): string {
+  const d = parseSnapshotTime(raw);
+  const now = new Date();
+  const isToday = d.toDateString() === now.toDateString();
+  if (isToday) return 'Today';
+  const yesterday = new Date(now);
+  yesterday.setDate(yesterday.getDate() - 1);
+  if (d.toDateString() === yesterday.toDateString()) return 'Yesterday';
+  return d.toLocaleDateString([], { month: 'short', day: 'numeric' });
+}
+
+function TimeTravelBar({
+  snapshots,
+  currentIndex,
+  onIndexChange,
+  isPlaying,
+  onTogglePlay,
+}: {
+  snapshots: Snapshot[];
+  currentIndex: number;
+  onIndexChange: (i: number) => void;
+  isPlaying: boolean;
+  onTogglePlay: () => void;
+}) {
+  const current = snapshots[currentIndex];
+  const isLive = currentIndex === snapshots.length; // past-end = live
+
+  return (
+    <div className="bg-[#0d1117] border-t border-[#2a2a3a] px-4 py-3">
+      <div className="max-w-4xl mx-auto flex flex-col gap-2">
+        {/* Controls row */}
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => onIndexChange(Math.max(0, currentIndex - 1))}
+              disabled={currentIndex <= 0}
+              className="p-1 rounded hover:bg-[#2a2a3a] text-mc-text-secondary hover:text-mc-text disabled:opacity-30 disabled:hover:bg-transparent"
+            >
+              <SkipBack className="w-3.5 h-3.5" />
+            </button>
+            <button
+              onClick={onTogglePlay}
+              disabled={snapshots.length === 0}
+              className="p-1.5 rounded hover:bg-[#2a2a3a] text-mc-accent-purple hover:text-purple-300 disabled:opacity-30"
+            >
+              {isPlaying ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
+            </button>
+            <button
+              onClick={() => onIndexChange(Math.min(snapshots.length, currentIndex + 1))}
+              disabled={isLive}
+              className="p-1 rounded hover:bg-[#2a2a3a] text-mc-text-secondary hover:text-mc-text disabled:opacity-30 disabled:hover:bg-transparent"
+            >
+              <SkipForward className="w-3.5 h-3.5" />
+            </button>
+          </div>
+
+          {/* Slider */}
+          <div className="flex-1 relative">
+            <input
+              type="range"
+              min={0}
+              max={snapshots.length}
+              value={isLive ? snapshots.length : currentIndex}
+              onChange={(e) => onIndexChange(parseInt(e.target.value, 10))}
+              className="w-full h-1.5 appearance-none bg-[#2a2a3a] rounded-full cursor-pointer
+                [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3
+                [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-mc-accent-purple
+                [&::-webkit-slider-thumb]:hover:bg-purple-300 [&::-webkit-slider-thumb]:transition-colors"
+            />
+          </div>
+
+          {/* Timestamp */}
+          <div className="flex items-center gap-2 min-w-[140px] justify-end">
+            {isLive ? (
+              <span className="text-xs font-mono text-green-400 flex items-center gap-1.5">
+                <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
+                LIVE
+              </span>
+            ) : current?.time ? (
+              <span className="text-xs font-mono text-mc-accent-purple">
+                {formatDate(current.time)} {formatTime(current.time)}
+              </span>
+            ) : (
+              <span className="text-xs font-mono text-mc-text-secondary">No history</span>
+            )}
+          </div>
+
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// --- Office Scene (shared between live and time travel) ---
+function OfficeScene({
+  workingAgents,
+  idleAgents,
+  getTaskTitle,
+  dimmed,
+}: {
+  workingAgents: Agent[];
+  idleAgents: Agent[];
+  getTaskTitle: (agentId: string) => string | undefined;
+  dimmed?: boolean;
+}) {
+  const benchWidth = Math.max(160, idleAgents.length * 70);
+
+  return (
+    <div
+      className={`w-full max-w-4xl rounded-xl border border-[#2a2a3a] p-8 transition-opacity duration-300 ${dimmed ? 'opacity-70' : ''}`}
+      style={{
+        backgroundColor: '#1a1a2e',
+        backgroundImage:
+          'linear-gradient(45deg, #1e1e32 25%, transparent 25%), linear-gradient(-45deg, #1e1e32 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #1e1e32 75%), linear-gradient(-45deg, transparent 75%, #1e1e32 75%)',
+        backgroundSize: '20px 20px',
+        backgroundPosition: '0 0, 0 10px, 10px -10px, -10px 0px',
+      }}
+    >
+      {/* Working Section */}
+      <div className="mb-8">
+        <div className="flex items-center gap-2 mb-6">
+          <div className={`w-2.5 h-2.5 rounded-full ${dimmed ? 'bg-purple-400' : 'bg-green-400 animate-pulse'}`} />
+          <span className="text-amber-400 font-mono font-bold text-sm uppercase tracking-widest">
+            Working
+          </span>
+          <span className="text-[#4a4a5a] font-mono text-xs ml-2">
+            ({workingAgents.length})
+          </span>
+        </div>
+
+        {workingAgents.length === 0 ? (
+          <div className="text-center py-8 text-[#4a4a5a] font-mono text-xs">
+            No agents currently working
+          </div>
+        ) : (
+          <div className="flex flex-wrap gap-10 justify-center">
+            {workingAgents.map((agent) => (
+              <WorkingAgent key={agent.id} agent={agent} taskTitle={getTaskTitle(agent.id)} />
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Divider */}
+      <div className="border-t border-[#2a2a3a] my-6" />
+
+      {/* On Break Section */}
+      <div>
+        <div className="flex items-center gap-2 mb-6">
+          <div className="w-2.5 h-2.5 rounded-full bg-amber-400" />
+          <span className="text-amber-400 font-mono font-bold text-sm uppercase tracking-widest">
+            On Break
+          </span>
+          <span className="text-[#4a4a5a] font-mono text-xs ml-2">
+            ({idleAgents.length})
+          </span>
+        </div>
+
+        {idleAgents.length === 0 ? (
+          <div className="text-center py-8 text-[#4a4a5a] font-mono text-xs">
+            Everyone&apos;s working!
+          </div>
+        ) : (
+          <div className="flex flex-col items-center gap-2">
+            <div className="flex flex-wrap gap-8 justify-center">
+              {idleAgents.map((agent) => (
+                <IdleAgent key={agent.id} agent={agent} />
+              ))}
+            </div>
+            <PixelBench width={benchWidth} />
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// --- Main Component ---
 interface PixelOfficeProps {
   workspaceId: string;
 }
@@ -131,85 +358,132 @@ interface PixelOfficeProps {
 export function PixelOffice({ workspaceId }: PixelOfficeProps) {
   const { agents, tasks } = useMissionControl();
 
-  const workingAgents = agents.filter((a) => a.status === 'working');
-  const idleAgents = agents.filter((a) => a.status !== 'working');
+  // Time travel state
+  const [snapshots, setSnapshots] = useState<Snapshot[]>([]);
+  const [snapshotIndex, setSnapshotIndex] = useState(0);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const playRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const getAgentTask = (agentId: string): Task | undefined => {
-    return tasks.find(
-      (t) => t.assigned_agent_id === agentId && t.status !== 'done' && t.status !== 'review'
-    );
-  };
+  const isLive = snapshotIndex >= snapshots.length;
 
-  const benchWidth = Math.max(160, idleAgents.length * 70);
+  // Load snapshots on mount
+  useEffect(() => {
+    let cancelled = false;
+    async function load() {
+      setLoading(true);
+      try {
+        const res = await fetch('/api/agents/snapshots?hours=24');
+        if (res.ok && !cancelled) {
+          const data: Snapshot[] = await res.json();
+          setSnapshots(data);
+          setSnapshotIndex(data.length);
+        }
+      } catch (err) {
+        console.error('Failed to load snapshots:', err);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+    load();
+    return () => { cancelled = true; };
+  }, []);
+
+  // Autoplay
+  useEffect(() => {
+    if (isPlaying && snapshots.length > 0) {
+      playRef.current = setInterval(() => {
+        setSnapshotIndex((prev) => {
+          if (prev >= snapshots.length) {
+            setIsPlaying(false);
+            return snapshots.length;
+          }
+          return prev + 1;
+        });
+      }, 1500);
+    }
+    return () => {
+      if (playRef.current) clearInterval(playRef.current);
+    };
+  }, [isPlaying, snapshots.length]);
+
+  const togglePlay = useCallback(() => {
+    if (isPlaying) {
+      setIsPlaying(false);
+    } else {
+      // If at end, restart from beginning
+      if (snapshotIndex >= snapshots.length) {
+        setSnapshotIndex(0);
+      }
+      setIsPlaying(true);
+    }
+  }, [isPlaying, snapshotIndex, snapshots.length]);
+
+  // Determine what to render
+  let displayWorking: Agent[];
+  let displayIdle: Agent[];
+  let getTaskTitle: (agentId: string) => string | undefined;
+
+  if (isLive) {
+    // Live mode
+    displayWorking = agents.filter((a) => a.status === 'working');
+    displayIdle = agents.filter((a) => a.status !== 'working');
+    getTaskTitle = (agentId: string) => {
+      const t = tasks.find(
+        (t) => t.assigned_agent_id === agentId && t.status !== 'done' && t.status !== 'review'
+      );
+      return t?.title;
+    };
+  } else {
+    // Time travel mode - use snapshot data
+    const snapshot = snapshots[snapshotIndex];
+    if (snapshot) {
+      const snapshotAgents = snapshot.agents.map(toDisplayAgent);
+      displayWorking = snapshotAgents.filter((a) => a.status === 'working');
+      displayIdle = snapshotAgents.filter((a) => a.status !== 'working');
+      // Build task title lookup from snapshot
+      const taskMap = new Map<string, string>();
+      for (const sa of snapshot.agents) {
+        if (sa.task_title) taskMap.set(sa.agent_id, sa.task_title);
+      }
+      getTaskTitle = (agentId: string) => taskMap.get(agentId);
+    } else {
+      displayWorking = [];
+      displayIdle = [];
+      getTaskTitle = () => undefined;
+    }
+  }
 
   return (
-    <div className="flex-1 flex items-center justify-center p-8 overflow-auto">
-      <div
-        className="w-full max-w-4xl rounded-xl border border-[#2a2a3a] p-8"
-        style={{
-          backgroundColor: '#1a1a2e',
-          backgroundImage:
-            'linear-gradient(45deg, #1e1e32 25%, transparent 25%), linear-gradient(-45deg, #1e1e32 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #1e1e32 75%), linear-gradient(-45deg, transparent 75%, #1e1e32 75%)',
-          backgroundSize: '20px 20px',
-          backgroundPosition: '0 0, 0 10px, 10px -10px, -10px 0px',
-        }}
-      >
-        {/* Working Section */}
-        <div className="mb-8">
-          <div className="flex items-center gap-2 mb-6">
-            <div className="w-2.5 h-2.5 rounded-full bg-green-400 animate-pulse" />
-            <span className="text-amber-400 font-mono font-bold text-sm uppercase tracking-widest">
-              Working
-            </span>
-            <span className="text-[#4a4a5a] font-mono text-xs ml-2">
-              ({workingAgents.length})
-            </span>
+    <div className="flex-1 flex flex-col overflow-hidden">
+      {/* Office area */}
+      <div className="flex-1 flex items-center justify-center p-8 overflow-auto relative">
+        <OfficeScene
+          workingAgents={displayWorking}
+          idleAgents={displayIdle}
+          getTaskTitle={getTaskTitle}
+          dimmed={!isLive}
+        />
+
+        {/* Loading overlay */}
+        {loading && (
+          <div className="absolute inset-0 bg-[#0d1117]/50 flex items-center justify-center">
+            <span className="text-mc-accent-purple font-mono text-sm animate-pulse">Loading history...</span>
           </div>
-
-          {workingAgents.length === 0 ? (
-            <div className="text-center py-8 text-[#4a4a5a] font-mono text-xs">
-              No agents currently working
-            </div>
-          ) : (
-            <div className="flex flex-wrap gap-10 justify-center">
-              {workingAgents.map((agent) => (
-                <WorkingAgent key={agent.id} agent={agent} task={getAgentTask(agent.id)} />
-              ))}
-            </div>
-          )}
-        </div>
-
-        {/* Divider */}
-        <div className="border-t border-[#2a2a3a] my-6" />
-
-        {/* On Break Section */}
-        <div>
-          <div className="flex items-center gap-2 mb-6">
-            <div className="w-2.5 h-2.5 rounded-full bg-amber-400" />
-            <span className="text-amber-400 font-mono font-bold text-sm uppercase tracking-widest">
-              On Break
-            </span>
-            <span className="text-[#4a4a5a] font-mono text-xs ml-2">
-              ({idleAgents.length})
-            </span>
-          </div>
-
-          {idleAgents.length === 0 ? (
-            <div className="text-center py-8 text-[#4a4a5a] font-mono text-xs">
-              Everyone&apos;s working!
-            </div>
-          ) : (
-            <div className="flex flex-col items-center gap-2">
-              <div className="flex flex-wrap gap-8 justify-center">
-                {idleAgents.map((agent) => (
-                  <IdleAgent key={agent.id} agent={agent} />
-                ))}
-              </div>
-              <PixelBench width={benchWidth} />
-            </div>
-          )}
-        </div>
+        )}
       </div>
+
+      {/* Time travel bar */}
+      <TimeTravelBar
+        snapshots={snapshots}
+        currentIndex={snapshotIndex}
+        onIndexChange={(i) => {
+          setSnapshotIndex(i);
+          setIsPlaying(false);
+        }}
+        isPlaying={isPlaying}
+        onTogglePlay={togglePlay}
+      />
     </div>
   );
 }

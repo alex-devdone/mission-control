@@ -170,7 +170,7 @@ export function AgentsSidebar({ workspaceId, isMobileOpen, onMobileClose }: Agen
 
   const sidebarContent = (
     <aside className={`bg-mc-bg-secondary border-r border-mc-border flex flex-col h-full ${
-      isMobileOpen !== undefined ? 'w-full' : 'w-64 max-w-[25vw] md:max-w-[300px]'
+      isMobileOpen !== undefined ? 'w-full' : 'w-64 max-w-[25%] shrink-0'
     }`}>
       {/* Header */}
       <div className="p-3 border-b border-mc-border">
@@ -369,7 +369,7 @@ export function AgentsSidebar({ workspaceId, isMobileOpen, onMobileClose }: Agen
           {sidebarContent}
         </div>
         {/* Desktop: collapsible sidebar */}
-        <div className="hidden md:flex">
+        <div className="hidden md:flex shrink-0 max-w-[25%]">
           {collapsed ? collapsedStrip : sidebarContent}
         </div>
       </>

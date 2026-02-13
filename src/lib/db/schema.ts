@@ -167,6 +167,21 @@ CREATE TABLE IF NOT EXISTS task_deliverables (
   created_at TEXT DEFAULT (datetime('now'))
 );
 
+-- Agent snapshots (for pixel office time travel)
+CREATE TABLE IF NOT EXISTS agent_snapshots (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  snapshot_time TEXT NOT NULL,
+  agent_id TEXT NOT NULL REFERENCES agents(id) ON DELETE CASCADE,
+  agent_name TEXT NOT NULL,
+  status TEXT NOT NULL,
+  avatar_emoji TEXT,
+  model TEXT,
+  limit_5h REAL,
+  limit_week REAL,
+  task_id TEXT,
+  task_title TEXT
+);
+
 -- Indexes for performance
 CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
 CREATE INDEX IF NOT EXISTS idx_tasks_assigned ON tasks(assigned_agent_id);
@@ -179,4 +194,6 @@ CREATE INDEX IF NOT EXISTS idx_activities_task ON task_activities(task_id, creat
 CREATE INDEX IF NOT EXISTS idx_deliverables_task ON task_deliverables(task_id);
 CREATE INDEX IF NOT EXISTS idx_openclaw_sessions_task ON openclaw_sessions(task_id);
 CREATE INDEX IF NOT EXISTS idx_planning_questions_task ON planning_questions(task_id, sort_order);
+CREATE INDEX IF NOT EXISTS idx_agent_snapshots_time ON agent_snapshots(snapshot_time);
+CREATE INDEX IF NOT EXISTS idx_agent_snapshots_agent ON agent_snapshots(agent_id, snapshot_time);
 `;

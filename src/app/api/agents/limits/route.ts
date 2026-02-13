@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { v4 as uuidv4 } from 'uuid';
-import { queryAll, queryOne, run } from '@/lib/db';
+import { getDb, queryAll, queryOne, run } from '@/lib/db';
 import { broadcast } from '@/lib/events';
 import type { Agent } from '@/lib/types';
 
@@ -136,7 +136,8 @@ export async function POST() {
                 now,
               ]
             );
-            broadcast({ type: 'task_updated', payload: queryOne('SELECT * FROM tasks WHERE id = ?', [task.id]) });
+            const updatedTask = queryOne<{ id: string; title: string; status: string }>('SELECT * FROM tasks WHERE id = ?', [task.id]);
+            if (updatedTask) broadcast({ type: 'task_updated', payload: updatedTask as unknown as import('@/lib/types').Task });
           }
         }
       }
@@ -165,6 +166,24 @@ export async function POST() {
           );
         }
       }
+    }
+
+    // Record snapshots for time travel
+    try {
+      const allAgents = queryAll<Agent>(
+        'SELECT a.*, t.id as active_task_id, t.title as active_task_title FROM agents a LEFT JOIN tasks t ON t.assigned_agent_id = a.id AND t.status NOT IN (\'done\', \'review\') ORDER BY a.id'
+      );
+      const snapshotStmt = getDb().prepare(
+        'INSERT INTO agent_snapshots (snapshot_time, agent_id, agent_name, status, avatar_emoji, model, limit_5h, limit_week, task_id, task_title) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+      );
+      for (const a of allAgents) {
+        const row = a as Agent & { active_task_id?: string; active_task_title?: string };
+        snapshotStmt.run(now, a.id, a.name, a.status, a.avatar_emoji, a.model ?? 'unknown', a.limit_5h ?? 100, a.limit_week ?? 100, row.active_task_id ?? null, row.active_task_title ?? null);
+      }
+      // Prune snapshots older than 7 days
+      run('DELETE FROM agent_snapshots WHERE snapshot_time < datetime(?, \'-7 days\')', [now]);
+    } catch (snapErr) {
+      console.error('[limits-poll] Failed to record snapshots:', snapErr);
     }
 
     return NextResponse.json({ success: true, polled_at: now, agents_updated: updated, source: 'agent-limits-service' });

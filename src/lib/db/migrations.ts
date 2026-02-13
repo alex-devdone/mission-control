@@ -206,6 +206,30 @@ const migrations: Migration[] = [
         db.exec(`CREATE INDEX IF NOT EXISTS idx_tasks_app ON tasks(app_id)`);
       }
     }
+  },
+  {
+    id: '007',
+    name: 'add_agent_snapshots',
+    up: (db) => {
+      console.log('[Migration 007] Creating agent_snapshots table...');
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS agent_snapshots (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          snapshot_time TEXT NOT NULL,
+          agent_id TEXT NOT NULL REFERENCES agents(id) ON DELETE CASCADE,
+          agent_name TEXT NOT NULL,
+          status TEXT NOT NULL,
+          avatar_emoji TEXT,
+          model TEXT,
+          limit_5h REAL,
+          limit_week REAL,
+          task_id TEXT,
+          task_title TEXT
+        )
+      `);
+      db.exec(`CREATE INDEX IF NOT EXISTS idx_agent_snapshots_time ON agent_snapshots(snapshot_time)`);
+      db.exec(`CREATE INDEX IF NOT EXISTS idx_agent_snapshots_agent ON agent_snapshots(agent_id, snapshot_time)`);
+    }
   }
 ];
 
