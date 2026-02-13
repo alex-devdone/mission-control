@@ -84,6 +84,10 @@ export async function PATCH(
       updates.push('due_date = ?');
       values.push(body.due_date);
     }
+    if (body.app_id !== undefined) {
+      updates.push('app_id = ?');
+      values.push(body.app_id);
+    }
 
     // Track if we need to dispatch task
     let shouldDispatch = false;
@@ -98,6 +102,33 @@ export async function PATCH(
         shouldDispatch = true;
       }
 
+      // Free the assigned agent when task moves to review or done
+      if ((body.status === 'review' || body.status === 'done') && existing.assigned_agent_id) {
+        // Only set to standby if agent has no other active tasks
+        const otherActiveTasks = queryOne<{ count: number }>(
+          `SELECT COUNT(*) as count FROM tasks
+           WHERE assigned_agent_id = ? AND id != ? AND status NOT IN ('done', 'review', 'backlog')`,
+          [existing.assigned_agent_id, id]
+        );
+        if (!otherActiveTasks || otherActiveTasks.count === 0) {
+          run(
+            'UPDATE agents SET status = ?, updated_at = ? WHERE id = ?',
+            ['standby', now, existing.assigned_agent_id]
+          );
+          // Broadcast agent update
+          const updatedAgent = queryOne<Agent>(
+            'SELECT * FROM agents WHERE id = ?',
+            [existing.assigned_agent_id]
+          );
+          if (updatedAgent) {
+            broadcast({
+              type: 'agent_updated',
+              payload: updatedAgent,
+            });
+          }
+        }
+      }
+
       // Log status change event
       const eventType = body.status === 'done' ? 'task_completed' : 'task_status_changed';
       run(
@@ -105,6 +136,13 @@ export async function PATCH(
          VALUES (?, ?, ?, ?, ?)`,
         [uuidv4(), eventType, id, `Task "${existing.title}" moved to ${body.status}`, now]
       );
+
+      // Recalculate app progress when task completes
+      if ((body.status === 'done' || body.status === 'review') && existing.app_id) {
+        const missionControlUrl = getMissionControlUrl();
+        fetch(`${missionControlUrl}/api/apps/${existing.app_id}/progress`, { method: 'POST' })
+          .catch(err => console.error('Failed to update app progress:', err));
+      }
     }
 
     // Handle assignment change

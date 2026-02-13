@@ -1,23 +1,45 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Plus, ChevronRight, Zap, ZapOff, Loader2 } from 'lucide-react';
+import { Plus, ChevronRight, Zap, ZapOff, Loader2, X, Users, MessageSquare } from 'lucide-react';
 import { useMissionControl } from '@/lib/store';
 import type { Agent, AgentStatus, OpenClawSession } from '@/lib/types';
 import { AgentModal } from './AgentModal';
+import { AgentChat } from './AgentChat';
+import { HealthBar } from './HealthBar';
+
+function ModelBadge({ model }: { model: string }) {
+  const m = model.toLowerCase();
+  const colorMap: Record<string, string> = {
+    opus: 'bg-indigo-500/20 text-indigo-400',
+    sonnet: 'bg-blue-500/20 text-blue-400',
+    haiku: 'bg-cyan-500/20 text-cyan-400',
+    'glm': 'bg-amber-500/20 text-amber-400',
+    codex: 'bg-green-500/20 text-green-400',
+  };
+  const color = Object.entries(colorMap).find(([k]) => m.includes(k))?.[1] || 'bg-gray-500/20 text-gray-400';
+  return (
+    <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-mono ${color}`}>
+      {model}
+    </span>
+  );
+}
 
 type FilterTab = 'all' | 'working' | 'standby';
 
 interface AgentsSidebarProps {
   workspaceId?: string;
+  isMobileOpen?: boolean;
+  onMobileClose?: () => void;
 }
 
-export function AgentsSidebar({ workspaceId }: AgentsSidebarProps) {
+export function AgentsSidebar({ workspaceId, isMobileOpen, onMobileClose }: AgentsSidebarProps) {
   const { agents, selectedAgent, setSelectedAgent, agentOpenClawSessions, setAgentOpenClawSession } = useMissionControl();
   const [filter, setFilter] = useState<FilterTab>('all');
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [editingAgent, setEditingAgent] = useState<Agent | null>(null);
   const [connectingAgentId, setConnectingAgentId] = useState<string | null>(null);
+  const [chatAgent, setChatAgent] = useState<Agent | null>(null);
   const [activeSubAgents, setActiveSubAgents] = useState(0);
 
   // Load OpenClaw session status for all agents on mount
@@ -57,27 +79,23 @@ export function AgentsSidebar({ workspaceId }: AgentsSidebarProps) {
     };
 
     loadSubAgentCount();
-
-    // Poll every 10 seconds to keep count updated
     const interval = setInterval(loadSubAgentCount, 10000);
     return () => clearInterval(interval);
   }, []);
 
   const handleConnectToOpenClaw = async (agent: Agent, e: React.MouseEvent) => {
-    e.stopPropagation(); // Prevent selecting the agent
+    e.stopPropagation();
     setConnectingAgentId(agent.id);
 
     try {
       const existingSession = agentOpenClawSessions[agent.id];
 
       if (existingSession) {
-        // Disconnect
         const res = await fetch(`/api/agents/${agent.id}/openclaw`, { method: 'DELETE' });
         if (res.ok) {
           setAgentOpenClawSession(agent.id, null);
         }
       } else {
-        // Connect
         const res = await fetch(`/api/agents/${agent.id}/openclaw`, { method: 'POST' });
         if (res.ok) {
           const data = await res.json();
@@ -95,6 +113,8 @@ export function AgentsSidebar({ workspaceId }: AgentsSidebarProps) {
     }
   };
 
+  const [collapsed, setCollapsed] = useState(true);
+
   const filteredAgents = agents.filter((agent) => {
     if (filter === 'all') return true;
     return agent.status === filter;
@@ -109,8 +129,49 @@ export function AgentsSidebar({ workspaceId }: AgentsSidebarProps) {
     return styles[status] || styles.standby;
   };
 
-  return (
-    <aside className="w-64 bg-mc-bg-secondary border-r border-mc-border flex flex-col">
+  const statusDot: Record<string, string> = {
+    working: 'bg-green-400',
+    standby: 'bg-yellow-400',
+    offline: 'bg-gray-500',
+  };
+
+  // Collapsed compact sidebar for desktop
+  const collapsedStrip = (
+    <aside className="hidden md:flex bg-mc-bg-secondary border-r border-mc-border flex-col h-full w-14 shrink-0">
+      {/* Header */}
+      <button
+        onClick={() => setCollapsed(false)}
+        className="p-2 border-b border-mc-border flex items-center justify-center hover:bg-mc-bg-tertiary transition-colors"
+        title="Expand sidebar"
+      >
+        <ChevronRight className="w-4 h-4 text-mc-text-secondary" />
+      </button>
+      {/* Compact agent list */}
+      <div className="flex-1 overflow-y-auto py-1 space-y-0.5">
+        {agents.map((agent) => (
+          <button
+            key={agent.id}
+            onClick={() => { setCollapsed(false); setSelectedAgent(agent); setEditingAgent(agent); }}
+            className="w-full flex flex-col items-center py-1.5 px-0.5 hover:bg-mc-bg-tertiary rounded transition-colors group relative"
+            title={`${agent.name} — ${agent.status}`}
+          >
+            <div className="relative text-lg">
+              {agent.avatar_emoji}
+              <span className={`absolute -bottom-0.5 -right-0.5 w-2 h-2 rounded-full border border-mc-bg-secondary ${statusDot[agent.status] || statusDot.standby}`} />
+            </div>
+            <span className="text-[9px] text-mc-text-secondary truncate w-full text-center leading-tight mt-0.5">
+              {agent.name.split(' ')[0]}
+            </span>
+          </button>
+        ))}
+      </div>
+    </aside>
+  );
+
+  const sidebarContent = (
+    <aside className={`bg-mc-bg-secondary border-r border-mc-border flex flex-col h-full ${
+      isMobileOpen !== undefined ? 'w-full' : 'w-64 max-w-[25vw] md:max-w-[300px]'
+    }`}>
       {/* Header */}
       <div className="p-3 border-b border-mc-border">
         <div className="flex items-center justify-between mb-3">
@@ -120,6 +181,16 @@ export function AgentsSidebar({ workspaceId }: AgentsSidebarProps) {
             <span className="bg-mc-bg-tertiary text-mc-text-secondary text-xs px-2 py-0.5 rounded">
               {agents.length}
             </span>
+          </div>
+          <div className="flex items-center gap-1">
+            {onMobileClose && (
+              <button onClick={onMobileClose} className="p-1 hover:bg-mc-bg-tertiary rounded md:hidden">
+                <X className="w-5 h-5 text-mc-text-secondary" />
+              </button>
+            )}
+            <button onClick={() => setCollapsed(true)} className="hidden md:block p-1 hover:bg-mc-bg-tertiary rounded" title="Collapse sidebar">
+              <ChevronRight className="w-4 h-4 text-mc-text-secondary rotate-180" />
+            </button>
           </div>
         </div>
 
@@ -172,7 +243,6 @@ export function AgentsSidebar({ workspaceId }: AgentsSidebarProps) {
                 }}
                 className="w-full flex items-center gap-3 p-2 text-left"
               >
-                {/* Avatar */}
                 <div className="text-2xl relative">
                   {agent.avatar_emoji}
                   {openclawSession && (
@@ -180,7 +250,6 @@ export function AgentsSidebar({ workspaceId }: AgentsSidebarProps) {
                   )}
                 </div>
 
-                {/* Info */}
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
                     <span className="font-medium text-sm truncate">{agent.name}</span>
@@ -191,21 +260,23 @@ export function AgentsSidebar({ workspaceId }: AgentsSidebarProps) {
                   <div className="text-xs text-mc-text-secondary truncate">
                     {agent.role}
                   </div>
+                  <div className="flex items-center gap-1.5 mt-0.5">
+                    {agent.model && agent.model !== 'unknown' && (
+                      <ModelBadge model={agent.model} />
+                    )}
+                    <HealthBar percentage={agent.limit_5h ?? 100} weekPercentage={agent.limit_week !== 100 ? agent.limit_week : null} size="sm" />
+                  </div>
                 </div>
 
-                {/* Status */}
                 <span
-                  className={`text-xs px-2 py-0.5 rounded uppercase ${getStatusBadge(
-                    agent.status
-                  )}`}
+                  className={`text-xs px-2 py-0.5 rounded uppercase ${getStatusBadge(agent.status)}`}
                 >
                   {agent.status}
                 </span>
               </button>
 
-              {/* OpenClaw Connect Button - show for master agents */}
               {!!agent.is_master && (
-                <div className="px-2 pb-2">
+                <div className="px-2 pb-1">
                   <button
                     onClick={(e) => handleConnectToOpenClaw(agent, e)}
                     disabled={isConnecting}
@@ -234,6 +305,17 @@ export function AgentsSidebar({ workspaceId }: AgentsSidebarProps) {
                   </button>
                 </div>
               )}
+
+              {/* Chat button — any agent with an openclaw_agent_id can chat */}
+              <div className="px-2 pb-2">
+                <button
+                  onClick={(e) => { e.stopPropagation(); setChatAgent(agent); }}
+                  className="w-full flex items-center justify-center gap-2 px-2 py-1 rounded text-xs bg-mc-accent-cyan/20 text-mc-accent-cyan hover:bg-mc-accent-cyan/30 transition-colors"
+                >
+                  <MessageSquare className="w-3 h-3" />
+                  <span>Chat</span>
+                </button>
+              </div>
             </div>
           );
         })}
@@ -261,6 +343,38 @@ export function AgentsSidebar({ workspaceId }: AgentsSidebarProps) {
           workspaceId={workspaceId}
         />
       )}
+      {chatAgent && (
+        <AgentChat agent={chatAgent} onClose={() => setChatAgent(null)} />
+      )}
     </aside>
   );
+
+  // Mobile: render as overlay drawer
+  if (isMobileOpen !== undefined) {
+    return (
+      <>
+        {/* Backdrop */}
+        {isMobileOpen && (
+          <div
+            className="fixed inset-0 bg-black/50 z-40 md:hidden"
+            onClick={onMobileClose}
+          />
+        )}
+        {/* Drawer */}
+        <div
+          className={`fixed inset-y-0 left-0 z-50 w-72 transform transition-transform duration-200 ease-in-out md:hidden ${
+            isMobileOpen ? 'translate-x-0' : '-translate-x-full'
+          }`}
+        >
+          {sidebarContent}
+        </div>
+        {/* Desktop: collapsible sidebar */}
+        <div className="hidden md:flex">
+          {collapsed ? collapsedStrip : sidebarContent}
+        </div>
+      </>
+    );
+  }
+
+  return collapsed ? collapsedStrip : sidebarContent;
 }

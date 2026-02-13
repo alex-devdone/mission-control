@@ -50,6 +50,12 @@ export async function GET(request: NextRequest) {
       params.push(assignedAgentId);
     }
 
+    const appId = searchParams.get('app_id');
+    if (appId) {
+      sql += ' AND t.app_id = ?';
+      params.push(appId);
+    }
+
     sql += ' ORDER BY t.created_at DESC';
 
     const tasks = queryAll<Task & { assigned_agent_name?: string; assigned_agent_emoji?: string; created_by_agent_name?: string }>(sql, params);
@@ -91,8 +97,8 @@ export async function POST(request: NextRequest) {
     const status = (body as { status?: string }).status || 'inbox';
     
     run(
-      `INSERT INTO tasks (id, title, description, status, priority, assigned_agent_id, created_by_agent_id, workspace_id, business_id, due_date, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO tasks (id, title, description, status, priority, assigned_agent_id, created_by_agent_id, workspace_id, business_id, app_id, due_date, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         id,
         body.title,
@@ -103,6 +109,7 @@ export async function POST(request: NextRequest) {
         body.created_by_agent_id || null,
         workspaceId,
         body.business_id || 'default',
+        body.app_id || null,
         body.due_date || null,
         now,
         now,

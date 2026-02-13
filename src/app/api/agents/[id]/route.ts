@@ -84,6 +84,14 @@ export async function PATCH(
       updates.push('agents_md = ?');
       values.push(body.agents_md);
     }
+    if ((body as Record<string, unknown>).model !== undefined) {
+      updates.push('model = ?');
+      values.push((body as Record<string, unknown>).model);
+    }
+    if ((body as Record<string, unknown>).provider_account_id !== undefined) {
+      updates.push('provider_account_id = ?');
+      values.push((body as Record<string, unknown>).provider_account_id);
+    }
 
     if (updates.length === 0) {
       return NextResponse.json({ error: 'No updates provided' }, { status: 400 });

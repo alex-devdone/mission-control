@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
-import { ChevronLeft, LayoutGrid, Monitor } from 'lucide-react';
+import { ChevronLeft, LayoutGrid, Monitor, Users, Radio } from 'lucide-react';
 import { Header } from '@/components/Header';
 import { AgentsSidebar } from '@/components/AgentsSidebar';
 import { MissionQueue } from '@/components/MissionQueue';
@@ -31,6 +31,8 @@ export default function WorkspacePage() {
   const [workspace, setWorkspace] = useState<Workspace | null>(null);
   const [notFound, setNotFound] = useState(false);
   const [view, setView] = useState<'kanban' | 'pixel'>('kanban');
+  const [agentsOpen, setAgentsOpen] = useState(false);
+  const [feedOpen, setFeedOpen] = useState(false);
 
   // Connect to SSE for real-time updates
   useSSE();
@@ -69,7 +71,6 @@ export default function WorkspacePage() {
       try {
         debug.api('Loading workspace data...', { workspaceId });
         
-        // Fetch workspace-scoped data
         const [agentsRes, tasksRes, eventsRes] = await Promise.all([
           fetch(`/api/agents?workspace_id=${workspaceId}`),
           fetch(`/api/tasks?workspace_id=${workspaceId}`),
@@ -90,7 +91,6 @@ export default function WorkspacePage() {
       }
     }
 
-    // Check OpenClaw connection separately (non-blocking)
     async function checkOpenClaw() {
       try {
         const controller = new AbortController();
@@ -111,7 +111,6 @@ export default function WorkspacePage() {
     loadData();
     checkOpenClaw();
 
-    // Poll for events every 5 seconds
     const eventPoll = setInterval(async () => {
       try {
         const res = await fetch('/api/events?limit=20');
@@ -123,7 +122,6 @@ export default function WorkspacePage() {
       }
     }, 5000);
 
-    // Poll tasks as SSE fallback (every 10 seconds)
     const taskPoll = setInterval(async () => {
       try {
         const res = await fetch(`/api/tasks?workspace_id=${workspaceId}`);
@@ -147,7 +145,20 @@ export default function WorkspacePage() {
       }
     }, 10000);
 
-    // Check OpenClaw connection every 30 seconds
+    // Poll agent limits every 5 minutes + once on load
+    const pollLimits = async () => {
+      try {
+        await fetch('/api/agents/limits', { method: 'POST' });
+        // Re-fetch agents to get updated limits
+        const res = await fetch(`/api/agents?workspace_id=${workspaceId}`);
+        if (res.ok) setAgents(await res.json());
+      } catch (error) {
+        console.error('Failed to poll limits:', error);
+      }
+    };
+    pollLimits();
+    const limitsPoll = setInterval(pollLimits, 5 * 60 * 1000);
+
     const connectionCheck = setInterval(async () => {
       try {
         const res = await fetch('/api/openclaw/status');
@@ -164,6 +175,7 @@ export default function WorkspacePage() {
       clearInterval(eventPoll);
       clearInterval(connectionCheck);
       clearInterval(taskPoll);
+      clearInterval(limitsPoll);
     };
   }, [workspace, setAgents, setTasks, setEvents, setIsOnline, setIsLoading]);
 
@@ -203,41 +215,69 @@ export default function WorkspacePage() {
     <div className="h-screen flex flex-col bg-mc-bg overflow-hidden">
       <Header workspace={workspace} />
 
-      {/* View Switcher */}
-      <div className="h-10 bg-mc-bg-secondary border-b border-mc-border flex items-center px-4 gap-1">
+      {/* View Switcher + Mobile Toggle Buttons */}
+      <div className="h-10 bg-mc-bg-secondary border-b border-mc-border flex items-center justify-between px-2 md:px-4">
+        <div className="flex items-center gap-1">
+          {/* Mobile: Agents toggle */}
+          <button
+            onClick={() => setAgentsOpen(true)}
+            className="flex items-center gap-1.5 px-3 py-1 rounded text-xs font-medium text-mc-text-secondary hover:text-mc-text hover:bg-mc-bg-tertiary md:hidden"
+          >
+            <Users className="w-3.5 h-3.5" />
+            Agents
+          </button>
+
+          <button
+            onClick={() => setView('kanban')}
+            className={`flex items-center gap-1.5 px-3 py-1 rounded text-xs font-medium transition-colors ${
+              view === 'kanban'
+                ? 'bg-mc-accent-cyan/20 text-mc-accent-cyan border border-mc-accent-cyan/40'
+                : 'text-mc-text-secondary hover:text-mc-text hover:bg-mc-bg-tertiary'
+            }`}
+          >
+            <LayoutGrid className="w-3.5 h-3.5" />
+            Kanban
+          </button>
+          <button
+            onClick={() => setView('pixel')}
+            className={`flex items-center gap-1.5 px-3 py-1 rounded text-xs font-medium transition-colors ${
+              view === 'pixel'
+                ? 'bg-mc-accent-purple/20 text-mc-accent-purple border border-mc-accent-purple/40'
+                : 'text-mc-text-secondary hover:text-mc-text hover:bg-mc-bg-tertiary'
+            }`}
+          >
+            <Monitor className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">Pixel Office</span>
+            <span className="sm:hidden">Pixel</span>
+          </button>
+        </div>
+
+        {/* Mobile: Feed toggle */}
         <button
-          onClick={() => setView('kanban')}
-          className={`flex items-center gap-1.5 px-3 py-1 rounded text-xs font-medium transition-colors ${
-            view === 'kanban'
-              ? 'bg-mc-accent-cyan/20 text-mc-accent-cyan border border-mc-accent-cyan/40'
-              : 'text-mc-text-secondary hover:text-mc-text hover:bg-mc-bg-tertiary'
-          }`}
+          onClick={() => setFeedOpen(true)}
+          className="flex items-center gap-1.5 px-3 py-1 rounded text-xs font-medium text-mc-text-secondary hover:text-mc-text hover:bg-mc-bg-tertiary md:hidden"
         >
-          <LayoutGrid className="w-3.5 h-3.5" />
-          Kanban
-        </button>
-        <button
-          onClick={() => setView('pixel')}
-          className={`flex items-center gap-1.5 px-3 py-1 rounded text-xs font-medium transition-colors ${
-            view === 'pixel'
-              ? 'bg-mc-accent-purple/20 text-mc-accent-purple border border-mc-accent-purple/40'
-              : 'text-mc-text-secondary hover:text-mc-text hover:bg-mc-bg-tertiary'
-          }`}
-        >
-          <Monitor className="w-3.5 h-3.5" />
-          Pixel Office
+          <Radio className="w-3.5 h-3.5" />
+          Feed
         </button>
       </div>
 
-      {view === 'kanban' ? (
-        <div className="flex-1 flex overflow-hidden">
-          <AgentsSidebar workspaceId={workspace.id} />
+      <div className="flex-1 flex overflow-hidden">
+        <AgentsSidebar
+          workspaceId={workspace.id}
+          isMobileOpen={agentsOpen}
+          onMobileClose={() => setAgentsOpen(false)}
+        />
+        {view === 'kanban' ? (
           <MissionQueue workspaceId={workspace.id} />
-          <LiveFeed />
-        </div>
-      ) : (
-        <PixelOffice workspaceId={workspace.id} />
-      )}
+        ) : (
+          <PixelOffice workspaceId={workspace.id} />
+        )}
+        <LiveFeed
+          isMobileOpen={feedOpen}
+          onMobileClose={() => setFeedOpen(false)}
+        />
+      </div>
 
       <SSEDebugPanel />
     </div>

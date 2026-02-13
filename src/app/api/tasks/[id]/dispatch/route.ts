@@ -4,7 +4,7 @@ import { queryOne, run } from '@/lib/db';
 import { getOpenClawClient } from '@/lib/openclaw/client';
 import { broadcast } from '@/lib/events';
 import { getProjectsPath, getMissionControlUrl } from '@/lib/config';
-import type { Task, Agent, OpenClawSession } from '@/lib/types';
+import type { Task, Agent, App, OpenClawSession } from '@/lib/types';
 
 interface RouteParams {
   params: Promise<{ id: string }>;
@@ -78,9 +78,9 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       const openclawSessionId = `mission-control-${agent.name.toLowerCase().replace(/\s+/g, '-')}`;
       
       run(
-        `INSERT INTO openclaw_sessions (id, agent_id, openclaw_session_id, channel, status, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?)`,
-        [sessionId, agent.id, openclawSessionId, 'mission-control', 'active', now, now]
+        `INSERT INTO openclaw_sessions (id, task_id, agent_id, openclaw_session_id, channel, status, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        [sessionId, id, agent.id, openclawSessionId, 'mission-control', 'active', now, now]
       );
 
       session = queryOne<OpenClawSession>(
@@ -117,6 +117,19 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     const taskProjectDir = `${projectsPath}/${projectDir}`;
     const missionControlUrl = getMissionControlUrl();
 
+    // Look up linked app for context
+    const app = task.app_id ? queryOne<App>('SELECT * FROM apps WHERE id = ?', [task.app_id]) : null;
+
+    // Build app context section
+    let appContext = '';
+    if (app) {
+      appContext = `\n## APP CONTEXT
+- **App**: ${app.name}
+- **Path**: \`${app.path}\`
+${app.port ? `- **Port**: ${app.port} (access at http://localhost:${app.port})\n` : ''}- **PRD**: Check \`${app.path}/.ralphy/PRD.md\` if it exists for feature specs
+`;
+    }
+
     const taskMessage = `${priorityEmoji} **NEW TASK ASSIGNED**
 
 **Title:** ${task.title}
@@ -124,15 +137,24 @@ ${task.description ? `**Description:** ${task.description}\n` : ''}
 **Priority:** ${task.priority.toUpperCase()}
 ${task.due_date ? `**Due:** ${task.due_date}\n` : ''}
 **Task ID:** ${task.id}
+${appContext}
+## SOURCE CODE — Edit Here Directly
+The Mission Control app source code is at: \`/Users/betty/work/mission-control/\`
+- **Frontend**: \`src/app/\` (Next.js 14 App Router pages and components)
+- **Components**: \`src/components/\` (React components)
+- **API routes**: \`src/app/api/\` (Next.js API routes)
+- **Lib/utils**: \`src/lib/\` (shared utilities, DB, OpenClaw client)
+- **Styles**: Tailwind CSS, mobile-first
 
-**OUTPUT DIRECTORY:** ${taskProjectDir}
-Create this directory and save all deliverables there.
+**YOU MUST edit the actual source files above.** Do NOT create standalone files in separate directories.
+Read existing code first to understand patterns, then make targeted changes.
+After editing, the dev server auto-reloads (no restart needed).
 
-**IMPORTANT:** After completing work, you MUST call these APIs:
+## After Completing Work
 1. Log activity: POST ${missionControlUrl}/api/tasks/${task.id}/activities
    Body: {"activity_type": "completed", "message": "Description of what was done"}
-2. Register deliverable: POST ${missionControlUrl}/api/tasks/${task.id}/deliverables
-   Body: {"deliverable_type": "file", "title": "File name", "path": "${taskProjectDir}/filename.html"}
+2. Register deliverable (list each changed file): POST ${missionControlUrl}/api/tasks/${task.id}/deliverables
+   Body: {"deliverable_type": "file", "title": "filename", "path": "/Users/betty/work/mission-control/src/..."}
 3. Update status: PATCH ${missionControlUrl}/api/tasks/${task.id}
    Body: {"status": "review"}
 
@@ -144,8 +166,9 @@ If you need help or clarification, ask me (Charlie).`;
     // Send message to agent's session using chat.send
     try {
       // Use sessionKey for routing to the agent's session
-      // Format: agent:devops:{openclaw_session_id}
-      const sessionKey = `agent:devops:${session.openclaw_session_id}`;
+      // Format: agent:{openclaw_agent_id}:{openclaw_session_id}
+      const openclawAgentId = (agent as unknown as { openclaw_agent_id?: string }).openclaw_agent_id || 'devops';
+      const sessionKey = `agent:${openclawAgentId}:${session.openclaw_session_id}`;
       await client.call('chat.send', {
         sessionKey,
         message: taskMessage,

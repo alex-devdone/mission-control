@@ -34,6 +34,11 @@ CREATE TABLE IF NOT EXISTS agents (
   soul_md TEXT,
   user_md TEXT,
   agents_md TEXT,
+  model TEXT DEFAULT 'unknown',
+  provider_account_id TEXT,
+  limit_5h REAL DEFAULT 100,
+  limit_week REAL DEFAULT 100,
+  last_poll_at TEXT,
   created_at TEXT DEFAULT (datetime('now')),
   updated_at TEXT DEFAULT (datetime('now'))
 );

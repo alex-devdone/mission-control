@@ -43,7 +43,7 @@ export function WorkspaceDashboard() {
     <div className="min-h-screen bg-mc-bg">
       {/* Header */}
       <header className="border-b border-mc-border bg-mc-bg-secondary">
-        <div className="max-w-7xl mx-auto px-6 py-4">
+        <div className="max-w-7xl mx-auto px-4 md:px-6 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               <span className="text-2xl">🦞</span>
@@ -61,7 +61,7 @@ export function WorkspaceDashboard() {
       </header>
 
       {/* Main Content */}
-      <main className="max-w-7xl mx-auto px-6 py-8">
+      <main className="max-w-7xl mx-auto px-4 md:px-6 py-6 md:py-8">
         <div className="mb-8">
           <h2 className="text-2xl font-bold mb-2">All Workspaces</h2>
           <p className="text-mc-text-secondary">
@@ -84,7 +84,7 @@ export function WorkspaceDashboard() {
             </button>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">
             {workspaces.map((workspace) => (
               <WorkspaceCard 
                 key={workspace.id} 

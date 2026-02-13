@@ -3,6 +3,33 @@
 import { useMissionControl } from '@/lib/store';
 import type { Agent, Task } from '@/lib/types';
 
+// Pixel HP bar (game-style life bar)
+function PixelHealthBar({ percentage, weekPercentage }: { percentage: number; weekPercentage?: number | null }) {
+  const clamped = Math.max(0, Math.min(100, percentage));
+  const color = clamped >= 70 ? '#22c55e' : clamped >= 30 ? '#f59e0b' : clamped >= 1 ? '#ef4444' : '#4b5563';
+  const hasWeek = weekPercentage != null;
+  const weekClamped = hasWeek ? Math.max(0, Math.min(100, weekPercentage)) : 0;
+  const weekColor = hasWeek ? (weekClamped >= 70 ? '#22c55e' : weekClamped >= 30 ? '#f59e0b' : weekClamped >= 1 ? '#ef4444' : '#4b5563') : '';
+  return (
+    <div className="flex flex-col gap-0.5 mt-0.5">
+      <div className="flex items-center gap-1">
+        <div className="w-6 h-1.5 bg-[#1a1a2e] border border-[#3a3a4a] rounded-sm overflow-hidden">
+          <div className="h-full rounded-sm transition-all duration-700" style={{ width: `${clamped}%`, backgroundColor: color }} />
+        </div>
+        <span className="text-[7px] font-mono" style={{ color }}>{Math.round(clamped)}%</span>
+      </div>
+      {hasWeek && (
+        <div className="flex items-center gap-1">
+          <div className="w-6 h-1 bg-[#1a1a2e] border border-[#3a3a4a] rounded-sm overflow-hidden opacity-70">
+            <div className="h-full rounded-sm transition-all duration-700" style={{ width: `${weekClamped}%`, backgroundColor: weekColor }} />
+          </div>
+          <span className="text-[7px] font-mono opacity-70" style={{ color: weekColor }}>{Math.round(weekClamped)}%</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // Pixel art desk + monitor using CSS
 function PixelDesk() {
   return (
@@ -65,6 +92,12 @@ function PixelCharacter({ agent, isWorking }: { agent: Agent; isWorking: boolean
       <span className="text-[10px] text-amber-300 font-mono font-bold tracking-wider uppercase">
         {agent.name}
       </span>
+      {/* Model */}
+      {agent.model && agent.model !== 'unknown' && (
+        <span className="text-[8px] text-[#6a6a8a] font-mono">{agent.model}</span>
+      )}
+      {/* HP Bar */}
+      <PixelHealthBar percentage={agent.limit_5h ?? 100} weekPercentage={agent.limit_week !== 100 ? agent.limit_week : null} />
     </div>
   );
 }

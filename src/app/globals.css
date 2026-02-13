@@ -135,3 +135,36 @@ body {
 .online-glow {
   box-shadow: 0 0 10px var(--mc-accent-green), 0 0 20px var(--mc-accent-green);
 }
+
+/* Mobile touch support */
+@media (max-width: 767px) {
+  .overflow-x-auto {
+    -webkit-overflow-scrolling: touch;
+    scroll-snap-type: x proximity;
+  }
+
+  /* Prevent text selection on touch for interactive elements */
+  button, a {
+    -webkit-tap-highlight-color: transparent;
+    user-select: none;
+  }
+
+  /* Larger tap targets on mobile */
+  button, a, input[type="checkbox"], input[type="radio"] {
+    min-height: 44px;
+    min-width: 44px;
+  }
+}
+
+/* Drawer transition smoothness */
+.transition-transform {
+  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Safe area support for notched devices */
+@supports (padding: max(0px)) {
+  body {
+    padding-left: max(0px, env(safe-area-inset-left));
+    padding-right: max(0px, env(safe-area-inset-right));
+  }
+}

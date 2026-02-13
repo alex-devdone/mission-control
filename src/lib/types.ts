@@ -1,5 +1,7 @@
 // Core types for Mission Control
 
+export type AppBuildStatus = 'ready' | 'building' | 'done' | 'error' | 'paused';
+
 export type AgentStatus = 'standby' | 'working' | 'offline';
 
 export type TaskStatus = 'planning' | 'inbox' | 'assigned' | 'in_progress' | 'testing' | 'review' | 'done';
@@ -18,7 +20,8 @@ export type EventType =
   | 'message_sent'
   | 'agent_status_changed'
   | 'agent_joined'
-  | 'system';
+  | 'system'
+  | 'limit_change';
 
 export interface Agent {
   id: string;
@@ -32,8 +35,46 @@ export interface Agent {
   soul_md?: string;
   user_md?: string;
   agents_md?: string;
+  model?: string;
+  provider_account_id?: string;
+  limit_5h?: number;
+  limit_week?: number;
+  last_poll_at?: string;
   created_at: string;
   updated_at: string;
+}
+
+export interface App {
+  id: string;
+  name: string;
+  description?: string;
+  path: string;
+  port?: number;
+  build_status: AppBuildStatus;
+  progress_completed: number;
+  progress_total: number;
+  current_agent_id?: string;
+  workspace_id: string;
+  created_at: string;
+  updated_at: string;
+  // Joined fields
+  current_agent?: Agent;
+  current_agent_name?: string;
+}
+
+export interface CreateAppRequest {
+  name: string;
+  description?: string;
+  path: string;
+  port?: number;
+  workspace_id?: string;
+}
+
+export interface UpdateAppRequest extends Partial<CreateAppRequest> {
+  build_status?: AppBuildStatus;
+  progress_completed?: number;
+  progress_total?: number;
+  current_agent_id?: string;
 }
 
 export interface Task {
@@ -46,12 +87,14 @@ export interface Task {
   created_by_agent_id?: string;
   workspace_id: string;
   business_id: string;
+  app_id?: string;
   due_date?: string;
   created_at: string;
   updated_at: string;
   // Joined fields
   assigned_agent?: Agent;
   created_by_agent?: Agent;
+  app?: App;
 }
 
 export interface Conversation {
@@ -239,6 +282,7 @@ export interface CreateTaskRequest {
   assigned_agent_id?: string;
   created_by_agent_id?: string;
   business_id?: string;
+  app_id?: string;
   due_date?: string;
 }
 
@@ -291,11 +335,12 @@ export type SSEEventType =
   | 'activity_logged'
   | 'deliverable_added'
   | 'agent_spawned'
-  | 'agent_completed';
+  | 'agent_completed'
+  | 'agent_updated';
 
 export interface SSEEvent {
   type: SSEEventType;
-  payload: Task | TaskActivity | TaskDeliverable | {
+  payload: Task | TaskActivity | TaskDeliverable | Agent | {
     taskId: string;
     sessionId: string;
     agentName?: string;

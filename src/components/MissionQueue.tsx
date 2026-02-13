@@ -80,43 +80,44 @@ export function MissionQueue({ workspaceId }: MissionQueueProps) {
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
       {/* Header */}
-      <div className="p-3 border-b border-mc-border flex items-center justify-between">
+      <div className="p-2 md:p-3 border-b border-mc-border flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <ChevronRight className="w-4 h-4 text-mc-text-secondary" />
-          <span className="text-sm font-medium uppercase tracking-wider">Mission Queue</span>
+          <ChevronRight className="w-3.5 h-3.5 md:w-4 md:h-4 text-mc-text-secondary" />
+          <span className="text-xs md:text-sm font-medium uppercase tracking-wider">Mission Queue</span>
         </div>
         <button
           onClick={() => setShowCreateModal(true)}
-          className="flex items-center gap-2 px-3 py-1.5 bg-mc-accent-pink text-mc-bg rounded text-sm font-medium hover:bg-mc-accent-pink/90"
+          className="flex items-center gap-1.5 md:gap-2 px-2 md:px-3 py-1 md:py-1.5 bg-mc-accent-pink text-mc-bg rounded text-xs md:text-sm font-medium hover:bg-mc-accent-pink/90"
         >
-          <Plus className="w-4 h-4" />
-          New Task
+          <Plus className="w-3.5 h-3.5 md:w-4 md:h-4" />
+          <span className="hidden sm:inline">New Task</span>
+          <span className="sm:hidden">New</span>
         </button>
       </div>
 
-      {/* Kanban Columns */}
-      <div className="flex-1 flex gap-3 p-3 overflow-x-auto">
+      {/* Kanban Columns - with mobile optimizations */}
+      <div className="flex-1 flex gap-2 md:gap-3 p-2 md:p-3 overflow-x-auto touch-pan-x">
         {COLUMNS.map((column) => {
           const columnTasks = getTasksByStatus(column.id);
           return (
             <div
               key={column.id}
-              className={`flex-1 min-w-[220px] max-w-[300px] flex flex-col bg-mc-bg rounded-lg border border-mc-border/50 border-t-2 ${column.color}`}
+              className={`flex-1 min-w-[180px] md:min-w-[220px] max-w-[300px] flex flex-col bg-mc-bg rounded-lg border border-mc-border/50 border-t-2 ${column.color}`}
               onDragOver={handleDragOver}
               onDrop={(e) => handleDrop(e, column.id)}
             >
               {/* Column Header */}
-              <div className="p-2 border-b border-mc-border flex items-center justify-between">
-                <span className="text-xs font-medium uppercase text-mc-text-secondary">
+              <div className="p-1.5 md:p-2 border-b border-mc-border flex items-center justify-between">
+                <span className="text-[10px] md:text-xs font-medium uppercase text-mc-text-secondary truncate">
                   {column.label}
                 </span>
-                <span className="text-xs bg-mc-bg-tertiary px-2 py-0.5 rounded text-mc-text-secondary">
+                <span className="text-[10px] md:text-xs bg-mc-bg-tertiary px-1.5 md:px-2 py-0.5 rounded text-mc-text-secondary ml-1">
                   {columnTasks.length}
                 </span>
               </div>
 
               {/* Tasks */}
-              <div className="flex-1 overflow-y-auto p-2 space-y-2">
+              <div className="flex-1 overflow-y-auto p-1.5 md:p-2 space-y-1.5 md:space-y-2">
                 {columnTasks.map((task) => (
                   <TaskCard
                     key={task.id}
@@ -176,15 +177,15 @@ function TaskCard({ task, onDragStart, onClick, isDragging }: TaskCardProps) {
         isDragging ? 'opacity-50 scale-95' : ''
       } ${isPlanning ? 'border-purple-500/40 hover:border-purple-500' : 'border-mc-border/50 hover:border-mc-accent/40'}`}
     >
-      {/* Drag handle bar */}
-      <div className="flex items-center justify-center py-1.5 border-b border-mc-border/30 opacity-0 group-hover:opacity-100 transition-opacity">
+      {/* Drag handle bar - hidden on touch devices */}
+      <div className="hidden md:flex items-center justify-center py-1.5 border-b border-mc-border/30 opacity-0 group-hover:opacity-100 transition-opacity">
         <GripVertical className="w-4 h-4 text-mc-text-secondary/50 cursor-grab" />
       </div>
 
       {/* Card content */}
-      <div className="p-4">
+      <div className="p-3 md:p-4">
         {/* Title */}
-        <h4 className="text-sm font-medium leading-snug line-clamp-2 mb-3">
+        <h4 className="text-xs md:text-sm font-medium leading-snug line-clamp-2 mb-2 md:mb-3">
           {task.title}
         </h4>
         

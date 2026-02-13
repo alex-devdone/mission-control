@@ -36,12 +36,23 @@ export function TaskModal({ task, onClose, workspaceId }: TaskModalProps) {
     return `${year}-${month}-${day}T23:59`;
   };
 
+  const [apps, setApps] = useState<import('@/lib/types').App[]>([]);
+
+  // Load apps on mount
+  useState(() => {
+    fetch(`/api/apps?workspace_id=${workspaceId || 'default'}`)
+      .then(r => r.ok ? r.json() : [])
+      .then(setApps)
+      .catch(() => {});
+  });
+
   const [form, setForm] = useState({
     title: task?.title || '',
     description: task?.description || '',
     priority: task?.priority || 'normal' as TaskPriority,
     status: task?.status || 'inbox' as TaskStatus,
     assigned_agent_id: task?.assigned_agent_id || '',
+    app_id: task?.app_id || '',
     due_date: task?.due_date || getDefaultDueDate(),
   });
 
@@ -58,6 +69,7 @@ export function TaskModal({ task, onClose, workspaceId }: TaskModalProps) {
         // If planning mode is enabled for new tasks, override status to 'planning'
         status: (!task && usePlanningMode) ? 'planning' : form.status,
         assigned_agent_id: form.assigned_agent_id || null,
+        app_id: form.app_id || null,
         due_date: form.due_date || null,
         workspace_id: workspaceId || task?.workspace_id || 'default',
       };
@@ -141,29 +153,29 @@ export function TaskModal({ task, onClose, workspaceId }: TaskModalProps) {
   ];
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-mc-bg-secondary border border-mc-border rounded-lg w-full max-w-2xl max-h-[90vh] flex flex-col">
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-0 md:p-4">
+      <div className="bg-mc-bg-secondary border-0 md:border border-mc-border rounded-none md:rounded-lg w-full max-w-full md:max-w-2xl h-full md:h-auto md:max-h-[90vh] flex flex-col">
         {/* Header */}
-        <div className="flex items-center justify-between p-4 border-b border-mc-border flex-shrink-0">
-          <h2 className="text-lg font-semibold">
+        <div className="flex items-center justify-between p-3 md:p-4 border-b border-mc-border flex-shrink-0">
+          <h2 className="text-base md:text-lg font-semibold line-clamp-1">
             {task ? task.title : 'Create New Task'}
           </h2>
           <button
             onClick={onClose}
-            className="p-1 hover:bg-mc-bg-tertiary rounded"
+            className="p-1 hover:bg-mc-bg-tertiary rounded flex-shrink-0"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        {/* Tabs - only show for existing tasks */}
+        {/* Tabs - only show for existing tasks - scrollable on mobile */}
         {task && (
-          <div className="flex border-b border-mc-border flex-shrink-0">
+          <div className="flex border-b border-mc-border flex-shrink-0 overflow-x-auto">
             {tabs.map((tab) => (
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id)}
-                className={`flex items-center gap-2 px-4 py-3 text-sm font-medium transition-colors ${
+                className={`flex items-center gap-1.5 md:gap-2 px-3 md:px-4 py-2 md:py-3 text-xs md:text-sm font-medium transition-colors whitespace-nowrap ${
                   activeTab === tab.id
                     ? 'text-mc-accent border-b-2 border-mc-accent'
                     : 'text-mc-text-secondary hover:text-mc-text'
@@ -265,6 +277,25 @@ export function TaskModal({ task, onClose, workspaceId }: TaskModalProps) {
             </div>
           </div>
 
+          {/* App */}
+          {apps.length > 0 && (
+            <div>
+              <label className="block text-sm font-medium mb-1">App</label>
+              <select
+                value={form.app_id}
+                onChange={(e) => setForm({ ...form, app_id: e.target.value })}
+                className="w-full bg-mc-bg border border-mc-border rounded px-3 py-2 text-sm focus:outline-none focus:border-mc-accent"
+              >
+                <option value="">No app</option>
+                {apps.map((app) => (
+                  <option key={app.id} value={app.id}>
+                    📦 {app.name} — {app.path}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
           {/* Assigned Agent */}
           <div>
             <label className="block text-sm font-medium mb-1">Assign to</label>
@@ -282,13 +313,36 @@ export function TaskModal({ task, onClose, workspaceId }: TaskModalProps) {
               <option value="">Unassigned</option>
               {agents.map((agent) => (
                 <option key={agent.id} value={agent.id}>
-                  {agent.avatar_emoji} {agent.name} - {agent.role}
+                  {agent.avatar_emoji} {agent.name} - {agent.role} {(agent.limit_5h ?? 100) < 30 ? '⚠️' : ''}
                 </option>
               ))}
               <option value="__add_new__" className="text-mc-accent">
                 ➕ Add new agent...
               </option>
             </select>
+            {/* Capacity warning */}
+            {form.assigned_agent_id && (() => {
+              const selectedAgent = agents.find(a => a.id === form.assigned_agent_id);
+              if (!selectedAgent) return null;
+              const h5 = selectedAgent.limit_5h ?? 100;
+              const wk = selectedAgent.limit_week ?? 100;
+              if (h5 < 10) {
+                return (
+                  <div className="mt-1 px-2 py-1 bg-red-500/20 border border-red-500/30 rounded text-xs text-red-400">
+                    {selectedAgent.name} has only {Math.round(h5)}% 5h capacity remaining
+                    {wk < 100 && ` (week: ${Math.round(wk)}%)`}
+                  </div>
+                );
+              }
+              if (h5 < 30 || wk < 15) {
+                return (
+                  <div className="mt-1 px-2 py-1 bg-amber-500/20 border border-amber-500/30 rounded text-xs text-amber-400">
+                    {selectedAgent.name}: {Math.round(h5)}% 5h{wk < 100 ? `, ${Math.round(wk)}% week` : ''}
+                  </div>
+                );
+              }
+              return null;
+            })()}
           </div>
 
           {/* Due Date */}

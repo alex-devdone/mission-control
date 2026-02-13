@@ -151,6 +151,61 @@ const migrations: Migration[] = [
         console.log('[Migration 004] Added planning_agents');
       }
     }
+  },
+  {
+    id: '005',
+    name: 'add_agent_model_limits',
+    up: (db) => {
+      console.log('[Migration 005] Adding model and limits columns to agents...');
+      const agentsInfo = db.prepare("PRAGMA table_info(agents)").all() as { name: string }[];
+      if (!agentsInfo.some(col => col.name === 'model')) {
+        db.exec(`ALTER TABLE agents ADD COLUMN model TEXT DEFAULT 'unknown'`);
+      }
+      if (!agentsInfo.some(col => col.name === 'provider_account_id')) {
+        db.exec(`ALTER TABLE agents ADD COLUMN provider_account_id TEXT`);
+      }
+      if (!agentsInfo.some(col => col.name === 'limit_5h')) {
+        db.exec(`ALTER TABLE agents ADD COLUMN limit_5h REAL DEFAULT 100`);
+      }
+      if (!agentsInfo.some(col => col.name === 'limit_week')) {
+        db.exec(`ALTER TABLE agents ADD COLUMN limit_week REAL DEFAULT 100`);
+      }
+      if (!agentsInfo.some(col => col.name === 'last_poll_at')) {
+        db.exec(`ALTER TABLE agents ADD COLUMN last_poll_at TEXT`);
+      }
+    }
+  },
+  {
+    id: '006',
+    name: 'create_apps_table',
+    up: (db) => {
+      console.log('[Migration 006] Creating apps table...');
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS apps (
+          id TEXT PRIMARY KEY,
+          name TEXT NOT NULL,
+          description TEXT,
+          path TEXT NOT NULL,
+          port INTEGER,
+          build_status TEXT DEFAULT 'ready' CHECK (build_status IN ('ready', 'building', 'done', 'error', 'paused')),
+          progress_completed INTEGER DEFAULT 0,
+          progress_total INTEGER DEFAULT 0,
+          current_agent_id TEXT REFERENCES agents(id),
+          workspace_id TEXT DEFAULT 'default' REFERENCES workspaces(id),
+          created_at TEXT DEFAULT (datetime('now')),
+          updated_at TEXT DEFAULT (datetime('now'))
+        )
+      `);
+      db.exec(`CREATE INDEX IF NOT EXISTS idx_apps_workspace ON apps(workspace_id)`);
+      db.exec(`CREATE INDEX IF NOT EXISTS idx_apps_status ON apps(build_status)`);
+      
+      // Add app_id to tasks
+      const tasksInfo = db.prepare("PRAGMA table_info(tasks)").all() as { name: string }[];
+      if (!tasksInfo.some(col => col.name === 'app_id')) {
+        db.exec(`ALTER TABLE tasks ADD COLUMN app_id TEXT REFERENCES apps(id)`);
+        db.exec(`CREATE INDEX IF NOT EXISTS idx_tasks_app ON tasks(app_id)`);
+      }
+    }
   }
 ];
 

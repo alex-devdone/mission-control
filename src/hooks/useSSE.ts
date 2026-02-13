@@ -16,6 +16,7 @@ export function useSSE() {
   const {
     updateTask,
     addTask,
+    updateAgent,
     setIsOnline,
     selectedTask,
     setSelectedTask,
@@ -90,6 +91,11 @@ export function useSSE() {
             case 'agent_spawned':
               debug.sse('Agent spawned', sseEvent.payload);
               // Will trigger re-fetch of sub-agent count
+              break;
+
+            case 'agent_updated':
+              debug.sse('Agent updated', sseEvent.payload);
+              updateAgent(sseEvent.payload as import('@/lib/types').Agent);
               break;
 
             case 'agent_completed':

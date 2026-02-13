@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import './globals.css';
+import { MobileBottomNav } from '@/components/MobileBottomNav';
 
 export const metadata: Metadata = {
   title: 'Mission Control',
@@ -22,7 +23,10 @@ export default function RootLayout({
           rel="stylesheet"
         />
       </head>
-      <body className="bg-mc-bg text-mc-text min-h-screen">{children}</body>
+      <body className="bg-mc-bg text-mc-text min-h-screen pb-14 sm:pb-0">
+        {children}
+        <MobileBottomNav />
+      </body>
     </html>
   );
 }
