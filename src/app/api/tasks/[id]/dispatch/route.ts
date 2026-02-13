@@ -144,8 +144,8 @@ If you need help or clarification, ask me (Charlie).`;
     // Send message to agent's session using chat.send
     try {
       // Use sessionKey for routing to the agent's session
-      // Format: agent:main:{openclaw_session_id}
-      const sessionKey = `agent:main:${session.openclaw_session_id}`;
+      // Format: agent:devops:{openclaw_session_id}
+      const sessionKey = `agent:devops:${session.openclaw_session_id}`;
       await client.call('chat.send', {
         sessionKey,
         message: taskMessage,

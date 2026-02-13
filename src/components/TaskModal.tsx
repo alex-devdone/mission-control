@@ -26,13 +26,23 @@ export function TaskModal({ task, onClose, workspaceId }: TaskModalProps) {
   // Auto-switch to planning tab if task is in planning status
   const [activeTab, setActiveTab] = useState<TabType>(task?.status === 'planning' ? 'planning' : 'overview');
 
+  const getDefaultDueDate = () => {
+    const today = new Date();
+    today.setHours(23, 59, 0, 0);
+    // Format as datetime-local value: YYYY-MM-DDTHH:mm
+    const year = today.getFullYear();
+    const month = String(today.getMonth() + 1).padStart(2, '0');
+    const day = String(today.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}T23:59`;
+  };
+
   const [form, setForm] = useState({
     title: task?.title || '',
     description: task?.description || '',
     priority: task?.priority || 'normal' as TaskPriority,
     status: task?.status || 'inbox' as TaskStatus,
     assigned_agent_id: task?.assigned_agent_id || '',
-    due_date: task?.due_date || '',
+    due_date: task?.due_date || getDefaultDueDate(),
   });
 
   const handleSubmit = async (e: React.FormEvent) => {

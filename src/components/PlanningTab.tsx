@@ -80,6 +80,13 @@ export function PlanningTab({ taskId, onSpecLocked }: PlanningTabProps) {
     loadState();
   }, [loadState]);
 
+  // Poll when waiting for AI response (started but no question yet)
+  useEffect(() => {
+    if (!state?.isStarted || state?.isComplete || state?.currentQuestion || loading) return;
+    const interval = setInterval(loadState, 3000);
+    return () => clearInterval(interval);
+  }, [state?.isStarted, state?.isComplete, state?.currentQuestion, loading, loadState]);
+
   // Start planning session
   const startPlanning = async () => {
     setStarting(true);

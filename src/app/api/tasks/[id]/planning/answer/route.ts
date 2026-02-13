@@ -176,13 +176,19 @@ If planning is complete, respond with JSON:
       const transcriptMessages = await getMessagesFromOpenClaw(task.planning_session_key!);
       console.log('[Planning] Answer poll - API messages:', transcriptMessages.length, 'initial:', initialMsgCount);
       
-      // Check if there's a new assistant message
+      // Check if there's a new assistant message (skip empty/junk responses)
       if (transcriptMessages.length > initialMsgCount) {
-        const lastAssistant = [...transcriptMessages].reverse().find(m => m.role === 'assistant');
+        const lastAssistant = [...transcriptMessages].reverse().find(m => m.role === 'assistant' && m.content.trim());
         if (lastAssistant) {
-          response = lastAssistant.content;
-          console.log('[Planning] Found new response in transcript');
-          break;
+          // Only accept responses that contain valid JSON
+          const testParsed = extractJSON(lastAssistant.content);
+          if (testParsed && ('question' in testParsed || 'status' in testParsed)) {
+            response = lastAssistant.content;
+            console.log('[Planning] Found valid JSON response in transcript');
+            break;
+          } else {
+            console.log('[Planning] Got non-JSON response, skipping:', lastAssistant.content.substring(0, 100));
+          }
         }
       }
     }

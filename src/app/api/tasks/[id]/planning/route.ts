@@ -3,8 +3,8 @@ import { getDb } from '@/lib/db';
 import { getOpenClawClient } from '@/lib/openclaw/client';
 // File system imports removed - using OpenClaw API instead
 
-// Planning session prefix for OpenClaw (must match agent:main: format)
-const PLANNING_SESSION_PREFIX = 'agent:main:planning:';
+// Planning session prefix for OpenClaw
+const PLANNING_SESSION_PREFIX = 'agent:devops:planning:';
 
 // Helper to extract JSON from a response that might have markdown code blocks or surrounding text
 function extractJSON(text: string): object | null {
@@ -113,9 +113,9 @@ export async function GET(
       console.log('[Planning GET] No assistant message in DB, checking OpenClaw...');
       const openclawMessages = await getMessagesFromOpenClaw(task.planning_session_key);
       if (openclawMessages.length > 0) {
-        const newAssistant = [...openclawMessages].reverse().find(m => m.role === 'assistant');
-        if (newAssistant) {
-          console.log('[Planning GET] Found assistant message in OpenClaw, syncing to DB');
+        const newAssistant = [...openclawMessages].reverse().find(m => m.role === 'assistant' && m.content.trim());
+        if (newAssistant && extractJSON(newAssistant.content)) {
+          console.log('[Planning GET] Found valid assistant message in OpenClaw, syncing to DB');
           messages.push({ role: 'assistant', content: newAssistant.content, timestamp: Date.now() });
           getDb().prepare('UPDATE tasks SET planning_messages = ? WHERE id = ?')
             .run(JSON.stringify(messages), taskId);
@@ -236,12 +236,17 @@ Respond with ONLY valid JSON in this format:
       console.log('[Planning] API messages:', transcriptMessages.length);
       
       if (transcriptMessages.length > 0) {
-        // Get the last assistant message
-        const lastAssistant = [...transcriptMessages].reverse().find(m => m.role === 'assistant');
+        // Get the last assistant message (must contain valid JSON)
+        const lastAssistant = [...transcriptMessages].reverse().find(m => m.role === 'assistant' && m.content.trim());
         if (lastAssistant) {
-          response = lastAssistant.content;
-          console.log('[Planning] Found response in transcript');
-          break;
+          const testParsed = extractJSON(lastAssistant.content);
+          if (testParsed && ('question' in testParsed || 'status' in testParsed)) {
+            response = lastAssistant.content;
+            console.log('[Planning] Found valid JSON response in transcript');
+            break;
+          } else {
+            console.log('[Planning] Got non-JSON response, skipping:', lastAssistant.content.substring(0, 100));
+          }
         }
       }
     }
