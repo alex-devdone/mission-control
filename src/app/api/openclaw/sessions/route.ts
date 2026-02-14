@@ -1,47 +1,29 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getOpenClawClient } from '@/lib/openclaw/client';
-import { queryAll } from '@/lib/db';
+import { connectDb, OpenclawSession } from '@/lib/db';
 import type { OpenClawSession } from '@/lib/types';
 
-// GET /api/openclaw/sessions - List OpenClaw sessions
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const sessionType = searchParams.get('session_type');
     const status = searchParams.get('status');
 
-    // If filtering by database fields, query the database
     if (sessionType || status) {
-      let sql = 'SELECT * FROM openclaw_sessions WHERE 1=1';
-      const params: unknown[] = [];
+      await connectDb();
+      const filter: Record<string, unknown> = {};
+      if (sessionType) filter.session_type = sessionType;
+      if (status) filter.status = status;
 
-      if (sessionType) {
-        sql += ' AND session_type = ?';
-        params.push(sessionType);
-      }
-
-      if (status) {
-        sql += ' AND status = ?';
-        params.push(status);
-      }
-
-      sql += ' ORDER BY created_at DESC';
-
-      const sessions = queryAll<OpenClawSession>(sql, params);
-      return NextResponse.json(sessions);
+      const sessions = await OpenclawSession.find(filter).sort({ created_at: -1 }).lean() as any[];
+      const result = sessions.map(s => ({ ...s, id: s._id }));
+      return NextResponse.json(result);
     }
 
-    // Otherwise, query OpenClaw Gateway for live sessions
     const client = getOpenClawClient();
-
     if (!client.isConnected()) {
-      try {
-        await client.connect();
-      } catch {
-        return NextResponse.json(
-          { error: 'Failed to connect to OpenClaw Gateway' },
-          { status: 503 }
-        );
+      try { await client.connect(); } catch {
+        return NextResponse.json({ error: 'Failed to connect to OpenClaw Gateway' }, { status: 503 });
       }
     }
 
@@ -49,36 +31,20 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ sessions });
   } catch (error) {
     console.error('Failed to list OpenClaw sessions:', error);
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Unknown error' },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: error instanceof Error ? error.message : 'Unknown error' }, { status: 500 });
   }
 }
 
-// POST /api/openclaw/sessions - Create a new OpenClaw session
 export async function POST(request: Request) {
   try {
     const body = await request.json();
     const { channel, peer } = body;
-
-    if (!channel) {
-      return NextResponse.json(
-        { error: 'channel is required' },
-        { status: 400 }
-      );
-    }
+    if (!channel) return NextResponse.json({ error: 'channel is required' }, { status: 400 });
 
     const client = getOpenClawClient();
-
     if (!client.isConnected()) {
-      try {
-        await client.connect();
-      } catch {
-        return NextResponse.json(
-          { error: 'Failed to connect to OpenClaw Gateway' },
-          { status: 503 }
-        );
+      try { await client.connect(); } catch {
+        return NextResponse.json({ error: 'Failed to connect to OpenClaw Gateway' }, { status: 503 });
       }
     }
 
@@ -86,9 +52,6 @@ export async function POST(request: Request) {
     return NextResponse.json({ session }, { status: 201 });
   } catch (error) {
     console.error('Failed to create OpenClaw session:', error);
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Unknown error' },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: error instanceof Error ? error.message : 'Unknown error' }, { status: 500 });
   }
 }

@@ -1,50 +1,39 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { v4 as uuidv4 } from 'uuid';
-import { queryAll, run } from '@/lib/db';
-import type { Event } from '@/lib/types';
+import { connectDb, Event, Agent, Task } from '@/lib/db';
+import type { Event as EventType } from '@/lib/types';
 
-// GET /api/events - List events (live feed)
 export async function GET(request: NextRequest) {
   try {
+    await connectDb();
     const { searchParams } = new URL(request.url);
     const limit = parseInt(searchParams.get('limit') || '50', 10);
-    const since = searchParams.get('since'); // ISO timestamp for polling
+    const since = searchParams.get('since');
 
-    let sql = `
-      SELECT e.*, a.name as agent_name, a.avatar_emoji as agent_emoji, t.title as task_title
-      FROM events e
-      LEFT JOIN agents a ON e.agent_id = a.id
-      LEFT JOIN tasks t ON e.task_id = t.id
-      WHERE 1=1
-    `;
-    const params: unknown[] = [];
+    const filter: Record<string, unknown> = {};
+    if (since) filter.created_at = { $gt: since };
 
-    if (since) {
-      sql += ' AND e.created_at > ?';
-      params.push(since);
-    }
+    const events = await Event.find(filter).sort({ created_at: -1 }).limit(limit).lean() as any[];
 
-    sql += ' ORDER BY e.created_at DESC LIMIT ?';
-    params.push(limit);
+    const agentIds = Array.from(new Set(events.map(e => e.agent_id).filter(Boolean)));
+    const taskIds = Array.from(new Set(events.map(e => e.task_id).filter(Boolean)));
+    const agents = agentIds.length > 0 ? await Agent.find({ _id: { $in: agentIds } }).lean() as any[] : [];
+    const tasks = taskIds.length > 0 ? await Task.find({ _id: { $in: taskIds } }).lean() as any[] : [];
+    const agentMap = new Map(agents.map(a => [a._id, a]));
+    const taskMap = new Map(tasks.map(t => [t._id, t]));
 
-    const events = queryAll<Event & { agent_name?: string; agent_emoji?: string; task_title?: string }>(sql, params);
-
-    // Transform to include nested info
-    const transformedEvents = events.map((event) => ({
+    const transformedEvents = events.map((event: any) => ({
       ...event,
-      agent: event.agent_id
-        ? {
-            id: event.agent_id,
-            name: event.agent_name,
-            avatar_emoji: event.agent_emoji,
-          }
-        : undefined,
-      task: event.task_id
-        ? {
-            id: event.task_id,
-            title: event.task_title,
-          }
-        : undefined,
+      id: event._id,
+      agent_name: event.agent_id && agentMap.has(event.agent_id) ? agentMap.get(event.agent_id)!.name : undefined,
+      agent_emoji: event.agent_id && agentMap.has(event.agent_id) ? agentMap.get(event.agent_id)!.avatar_emoji : undefined,
+      task_title: event.task_id && taskMap.has(event.task_id) ? taskMap.get(event.task_id)!.title : undefined,
+      agent: event.agent_id && agentMap.has(event.agent_id) ? {
+        id: event.agent_id, name: agentMap.get(event.agent_id)!.name, avatar_emoji: agentMap.get(event.agent_id)!.avatar_emoji,
+      } : undefined,
+      task: event.task_id && taskMap.has(event.task_id) ? {
+        id: event.task_id, title: taskMap.get(event.task_id)!.title,
+      } : undefined,
     }));
 
     return NextResponse.json(transformedEvents);
@@ -54,31 +43,20 @@ export async function GET(request: NextRequest) {
   }
 }
 
-// POST /api/events - Create a manual event
 export async function POST(request: NextRequest) {
   try {
+    await connectDb();
     const body = await request.json();
-
-    if (!body.type || !body.message) {
-      return NextResponse.json({ error: 'Type and message are required' }, { status: 400 });
-    }
+    if (!body.type || !body.message) return NextResponse.json({ error: 'Type and message are required' }, { status: 400 });
 
     const id = uuidv4();
     const now = new Date().toISOString();
 
-    run(
-      `INSERT INTO events (id, type, agent_id, task_id, message, metadata, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      [
-        id,
-        body.type,
-        body.agent_id || null,
-        body.task_id || null,
-        body.message,
-        body.metadata ? JSON.stringify(body.metadata) : null,
-        now,
-      ]
-    );
+    await Event.create({
+      _id: id, type: body.type, agent_id: body.agent_id || null,
+      task_id: body.task_id || null, message: body.message,
+      metadata: body.metadata || null, created_at: now,
+    });
 
     return NextResponse.json({ id, type: body.type, message: body.message, created_at: now }, { status: 201 });
   } catch (error) {

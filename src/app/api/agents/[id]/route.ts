@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { v4 as uuidv4 } from 'uuid';
-import { queryOne, run } from '@/lib/db';
-import type { Agent, UpdateAgentRequest } from '@/lib/types';
+import { connectDb, Agent, Event, OpenclawSession, Task, TaskActivity, Message, ConversationParticipant } from '@/lib/db';
+import type { Agent as AgentType, UpdateAgentRequest } from '@/lib/types';
 
 // GET /api/agents/[id] - Get a single agent
 export async function GET(
@@ -9,14 +9,15 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    await connectDb();
     const { id } = await params;
-    const agent = queryOne<Agent>('SELECT * FROM agents WHERE id = ?', [id]);
+    const agent = await Agent.findById(id).lean();
 
     if (!agent) {
       return NextResponse.json({ error: 'Agent not found' }, { status: 404 });
     }
 
-    return NextResponse.json(agent);
+    return NextResponse.json({ ...agent, id: (agent as any)._id });
   } catch (error) {
     console.error('Failed to fetch agent:', error);
     return NextResponse.json({ error: 'Failed to fetch agent' }, { status: 500 });
@@ -29,82 +30,43 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    await connectDb();
     const { id } = await params;
     const body: UpdateAgentRequest = await request.json();
 
-    const existing = queryOne<Agent>('SELECT * FROM agents WHERE id = ?', [id]);
+    const existing = await Agent.findById(id).lean();
     if (!existing) {
       return NextResponse.json({ error: 'Agent not found' }, { status: 404 });
     }
 
-    const updates: string[] = [];
-    const values: unknown[] = [];
+    const updates: Record<string, unknown> = {};
 
-    if (body.name !== undefined) {
-      updates.push('name = ?');
-      values.push(body.name);
-    }
-    if (body.role !== undefined) {
-      updates.push('role = ?');
-      values.push(body.role);
-    }
-    if (body.description !== undefined) {
-      updates.push('description = ?');
-      values.push(body.description);
-    }
-    if (body.avatar_emoji !== undefined) {
-      updates.push('avatar_emoji = ?');
-      values.push(body.avatar_emoji);
-    }
+    if (body.name !== undefined) updates.name = body.name;
+    if (body.role !== undefined) updates.role = body.role;
+    if (body.description !== undefined) updates.description = body.description;
+    if (body.avatar_emoji !== undefined) updates.avatar_emoji = body.avatar_emoji;
     if (body.status !== undefined) {
-      updates.push('status = ?');
-      values.push(body.status);
-
-      // Log status change event
+      updates.status = body.status;
       const now = new Date().toISOString();
-      run(
-        `INSERT INTO events (id, type, agent_id, message, created_at)
-         VALUES (?, ?, ?, ?, ?)`,
-        [uuidv4(), 'agent_status_changed', id, `${existing.name} is now ${body.status}`, now]
-      );
+      await Event.create({
+        _id: uuidv4(), type: 'agent_status_changed', agent_id: id,
+        message: `${(existing as any).name} is now ${body.status}`, created_at: now,
+      });
     }
-    if (body.is_master !== undefined) {
-      updates.push('is_master = ?');
-      values.push(body.is_master ? 1 : 0);
-    }
-    if (body.soul_md !== undefined) {
-      updates.push('soul_md = ?');
-      values.push(body.soul_md);
-    }
-    if (body.user_md !== undefined) {
-      updates.push('user_md = ?');
-      values.push(body.user_md);
-    }
-    if (body.agents_md !== undefined) {
-      updates.push('agents_md = ?');
-      values.push(body.agents_md);
-    }
-    if ((body as Record<string, unknown>).model !== undefined) {
-      updates.push('model = ?');
-      values.push((body as Record<string, unknown>).model);
-    }
-    if ((body as Record<string, unknown>).provider_account_id !== undefined) {
-      updates.push('provider_account_id = ?');
-      values.push((body as Record<string, unknown>).provider_account_id);
-    }
+    if (body.is_master !== undefined) updates.is_master = body.is_master ? 1 : 0;
+    if (body.soul_md !== undefined) updates.soul_md = body.soul_md;
+    if (body.user_md !== undefined) updates.user_md = body.user_md;
+    if (body.agents_md !== undefined) updates.agents_md = body.agents_md;
+    if ((body as Record<string, unknown>).model !== undefined) updates.model = (body as Record<string, unknown>).model;
+    if ((body as Record<string, unknown>).provider_account_id !== undefined) updates.provider_account_id = (body as Record<string, unknown>).provider_account_id;
 
-    if (updates.length === 0) {
+    if (Object.keys(updates).length === 0) {
       return NextResponse.json({ error: 'No updates provided' }, { status: 400 });
     }
 
-    updates.push('updated_at = ?');
-    values.push(new Date().toISOString());
-    values.push(id);
-
-    run(`UPDATE agents SET ${updates.join(', ')} WHERE id = ?`, values);
-
-    const agent = queryOne<Agent>('SELECT * FROM agents WHERE id = ?', [id]);
-    return NextResponse.json(agent);
+    await Agent.findByIdAndUpdate(id, { $set: updates });
+    const agent = await Agent.findById(id).lean();
+    return NextResponse.json({ ...agent, id: (agent as any)._id });
   } catch (error) {
     console.error('Failed to update agent:', error);
     return NextResponse.json({ error: 'Failed to update agent' }, { status: 500 });
@@ -117,24 +79,22 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    await connectDb();
     const { id } = await params;
-    const existing = queryOne<Agent>('SELECT * FROM agents WHERE id = ?', [id]);
+    const existing = await Agent.findById(id).lean();
 
     if (!existing) {
       return NextResponse.json({ error: 'Agent not found' }, { status: 404 });
     }
 
-    // Delete or nullify related records first (foreign key constraints)
-    run('DELETE FROM openclaw_sessions WHERE agent_id = ?', [id]);
-    run('DELETE FROM events WHERE agent_id = ?', [id]);
-    run('DELETE FROM messages WHERE sender_agent_id = ?', [id]);
-    run('DELETE FROM conversation_participants WHERE agent_id = ?', [id]);
-    run('UPDATE tasks SET assigned_agent_id = NULL WHERE assigned_agent_id = ?', [id]);
-    run('UPDATE tasks SET created_by_agent_id = NULL WHERE created_by_agent_id = ?', [id]);
-    run('UPDATE task_activities SET agent_id = NULL WHERE agent_id = ?', [id]);
-
-    // Now delete the agent
-    run('DELETE FROM agents WHERE id = ?', [id]);
+    await OpenclawSession.deleteMany({ agent_id: id });
+    await Event.deleteMany({ agent_id: id });
+    await Message.deleteMany({ sender_agent_id: id });
+    await ConversationParticipant.deleteMany({ agent_id: id });
+    await Task.updateMany({ assigned_agent_id: id }, { $set: { assigned_agent_id: null } });
+    await Task.updateMany({ created_by_agent_id: id }, { $set: { created_by_agent_id: null } });
+    await TaskActivity.updateMany({ agent_id: id }, { $set: { agent_id: null } });
+    await Agent.findByIdAndDelete(id);
 
     return NextResponse.json({ success: true });
   } catch (error) {

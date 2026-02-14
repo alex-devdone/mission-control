@@ -1,10 +1,73 @@
 'use client';
 
-import { useState } from 'react';
-import { ChevronRight, Clock, X, Radio } from 'lucide-react';
+import { useState, useEffect, useCallback } from 'react';
+import { ChevronRight, Clock, X, Radio, Zap } from 'lucide-react';
 import { useMissionControl } from '@/lib/store';
 import type { Event } from '@/lib/types';
 import { formatDistanceToNow } from 'date-fns';
+
+interface LiveSessionInfo {
+  key: string;
+  kind: string;
+  channel: string;
+  updatedAt: number;
+  model: string;
+  totalTokens: number;
+  agentId?: string;
+  agentName?: string;
+}
+
+function useOpenClawActivity(pollInterval = 15000) {
+  const [sessions, setSessions] = useState<LiveSessionInfo[]>([]);
+
+  const fetchSessions = useCallback(async () => {
+    try {
+      const [sessRes, agentsRes] = await Promise.all([
+        fetch('/api/openclaw/sessions-live'),
+        fetch('/api/openclaw/agents-full'),
+      ]);
+      if (!sessRes.ok) return;
+      const sessData = await sessRes.json();
+      const agentsData = agentsRes.ok ? await agentsRes.json() : { agents: [] };
+
+      const agentMap = new Map<string, string>();
+      for (const a of agentsData.agents || []) {
+        agentMap.set(a.id, a.name);
+      }
+
+      // Only show sessions updated in last 5 min
+      const now = Date.now();
+      const recent = (sessData.sessions || [])
+        .filter((s: LiveSessionInfo) => now - s.updatedAt < 300000)
+        .map((s: LiveSessionInfo) => {
+          const agentId = s.key.split(':')[1] || '';
+          return { ...s, agentId, agentName: agentMap.get(agentId) || agentId };
+        })
+        .slice(0, 20);
+
+      setSessions(recent);
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchSessions();
+    const interval = setInterval(fetchSessions, pollInterval);
+    return () => clearInterval(interval);
+  }, [fetchSessions, pollInterval]);
+
+  return sessions;
+}
+
+function describeSession(s: LiveSessionInfo): string {
+  const name = s.agentName || s.agentId || 'Unknown';
+  if (s.key.includes(':main')) return `${name} active in main session`;
+  if (s.kind === 'subagent' || s.key.includes(':subagent:')) return `${name} running sub-agent task`;
+  if (s.key.includes(':isolated:') || s.key.includes(':cron:')) return `${name} running cron job`;
+  if (s.channel && s.channel !== 'unknown') return `${name} responding in ${s.channel}`;
+  return `${name} active (${s.model || 'unknown model'})`;
+}
 
 type FeedFilter = 'all' | 'tasks' | 'agents' | 'limits';
 
@@ -17,6 +80,7 @@ export function LiveFeed({ isMobileOpen, onMobileClose }: LiveFeedProps) {
   const { events } = useMissionControl();
   const [filter, setFilter] = useState<FeedFilter>('all');
   const [collapsed, setCollapsed] = useState(true);
+  const liveSessions = useOpenClawActivity();
 
   const filteredEvents = events.filter((event) => {
     if (filter === 'all') return true;
@@ -85,9 +149,31 @@ export function LiveFeed({ isMobileOpen, onMobileClose }: LiveFeedProps) {
         </div>
       </div>
 
+      {/* Live OpenClaw Activity */}
+      {liveSessions.length > 0 && (filter === 'all' || filter === 'agents') && (
+        <div className="px-2 pt-2">
+          <div className="flex items-center gap-1.5 mb-1.5">
+            <Zap className="w-3 h-3 text-green-400" />
+            <span className="text-[10px] uppercase tracking-wider text-green-400 font-medium">Live Now</span>
+            <span className="text-[10px] bg-green-500/20 text-green-400 px-1.5 rounded-full">{liveSessions.length}</span>
+          </div>
+          <div className="space-y-0.5 mb-2">
+            {liveSessions.map((s) => (
+              <div key={s.key} className="flex items-center gap-2 px-2 py-1.5 rounded bg-green-500/5 border border-green-500/10">
+                <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse flex-shrink-0" />
+                <span className="text-xs text-mc-text truncate">{describeSession(s)}</span>
+                <span className="text-[9px] text-mc-text-secondary ml-auto flex-shrink-0">
+                  {formatDistanceToNow(s.updatedAt, { addSuffix: true })}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Events List */}
       <div className="flex-1 overflow-y-auto p-2 space-y-1">
-        {filteredEvents.length === 0 ? (
+        {filteredEvents.length === 0 && liveSessions.length === 0 ? (
           <div className="text-center py-8 text-mc-text-secondary text-sm">
             No events yet
           </div>

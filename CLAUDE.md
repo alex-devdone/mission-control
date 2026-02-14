@@ -18,7 +18,7 @@ npm run db:restore   # Restore from backup
 
 - **Framework:** Next.js 14 (App Router) + React 18 + TypeScript 5
 - **Styling:** Tailwind CSS with custom `mc-*` dark theme (JetBrains Mono font)
-- **State:** Zustand v5
+- **State:** Zustand v5, React Query (@tanstack/react-query) for server data caching
 - **Database:** SQLite via better-sqlite3 (auto-migrating on startup)
 - **Real-time:** Server-Sent Events (SSE) with polling fallback
 - **AI Integration:** OpenClaw Gateway (WebSocket)
@@ -60,7 +60,8 @@ src/
 │   ├── events.ts           # SSE broadcast utility
 │   └── charlie-orchestration.ts  # Agent workflow helpers
 └── hooks/
-    └── useSSE.ts           # SSE connection hook
+    ├── useSSE.ts           # SSE connection hook
+    └── useModelLimits.ts   # Model limits hook (React Query)
 ```
 
 ## Key Patterns
@@ -96,3 +97,5 @@ PORT=17789
 - API routes return JSON; errors use `{ error: string }` format
 - Components use Tailwind utility classes exclusively (no CSS modules)
 - Database migrations auto-run on first `getDb()` call
+- API data fetching uses React Query hooks in `src/hooks/` — hooks encapsulate the query key, fetch function, and data transformation; components just call the hook
+- `QueryClientProvider` is set up in `src/components/Providers.tsx`, wrapping the app in `layout.tsx`

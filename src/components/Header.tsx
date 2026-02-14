@@ -80,6 +80,12 @@ export function Header({ workspace }: HeaderProps) {
             >
               📦 <span className="hidden sm:inline">Apps</span>
             </Link>
+            <Link
+              href="/observatory"
+              className="flex items-center gap-1 px-2 py-1 text-xs text-mc-text-secondary hover:text-mc-accent hover:bg-mc-bg-tertiary rounded transition-colors"
+            >
+              👁️ <span className="hidden sm:inline">Observatory</span>
+            </Link>
           </div>
         ) : (
           <Link

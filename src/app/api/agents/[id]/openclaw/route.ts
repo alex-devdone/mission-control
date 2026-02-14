@@ -1,114 +1,88 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { v4 as uuidv4 } from 'uuid';
-import { queryOne, run } from '@/lib/db';
+import { connectDb, Agent, OpenclawSession, Event } from '@/lib/db';
 import { getOpenClawClient } from '@/lib/openclaw/client';
-import type { Agent, OpenClawSession } from '@/lib/types';
+import type { Agent as AgentType, OpenClawSession } from '@/lib/types';
 
 interface RouteParams {
   params: Promise<{ id: string }>;
 }
 
-// GET /api/agents/[id]/openclaw - Get the agent's OpenClaw session
+// GET /api/agents/[id]/openclaw
 export async function GET(request: NextRequest, { params }: RouteParams) {
   try {
+    await connectDb();
     const { id } = await params;
 
-    const agent = queryOne<Agent>('SELECT * FROM agents WHERE id = ?', [id]);
+    const agent = await Agent.findById(id).lean();
     if (!agent) {
       return NextResponse.json({ error: 'Agent not found' }, { status: 404 });
     }
 
-    const session = queryOne<OpenClawSession>(
-      'SELECT * FROM openclaw_sessions WHERE agent_id = ? AND status = ?',
-      [id, 'active']
-    );
+    const session = await OpenclawSession.findOne({ agent_id: id, status: 'active' }).lean();
 
     if (!session) {
       return NextResponse.json({ linked: false, session: null });
     }
 
-    return NextResponse.json({ linked: true, session });
+    return NextResponse.json({ linked: true, session: { ...session, id: (session as any)._id } });
   } catch (error) {
     console.error('Failed to get OpenClaw session:', error);
-    return NextResponse.json(
-      { error: 'Failed to get OpenClaw session' },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: 'Failed to get OpenClaw session' }, { status: 500 });
   }
 }
 
-// POST /api/agents/[id]/openclaw - Link agent to OpenClaw (creates session)
+// POST /api/agents/[id]/openclaw
 export async function POST(request: NextRequest, { params }: RouteParams) {
   try {
+    await connectDb();
     const { id } = await params;
 
-    const agent = queryOne<Agent>('SELECT * FROM agents WHERE id = ?', [id]);
+    const agent = await Agent.findById(id).lean() as any;
     if (!agent) {
       return NextResponse.json({ error: 'Agent not found' }, { status: 404 });
     }
 
-    // Check if already linked
-    const existingSession = queryOne<OpenClawSession>(
-      'SELECT * FROM openclaw_sessions WHERE agent_id = ? AND status = ?',
-      [id, 'active']
-    );
+    const existingSession = await OpenclawSession.findOne({ agent_id: id, status: 'active' }).lean();
     if (existingSession) {
       return NextResponse.json(
-        { error: 'Agent is already linked to an OpenClaw session', session: existingSession },
+        { error: 'Agent is already linked to an OpenClaw session', session: { ...existingSession, id: (existingSession as any)._id } },
         { status: 409 }
       );
     }
 
-    // Connect to OpenClaw Gateway
     const client = getOpenClawClient();
     if (!client.isConnected()) {
-      try {
-        await client.connect();
-      } catch {
-        return NextResponse.json(
-          { error: 'Failed to connect to OpenClaw Gateway' },
-          { status: 503 }
-        );
+      try { await client.connect(); } catch {
+        return NextResponse.json({ error: 'Failed to connect to OpenClaw Gateway' }, { status: 503 });
       }
     }
 
-    // OpenClaw creates sessions automatically when messages are sent
-    // Just verify connection works by listing sessions
-    try {
-      await client.listSessions();
-    } catch (err) {
+    try { await client.listSessions(); } catch (err) {
       console.error('Failed to verify OpenClaw connection:', err);
-      return NextResponse.json(
-        { error: 'Connected but failed to communicate with OpenClaw Gateway' },
-        { status: 503 }
-      );
+      return NextResponse.json({ error: 'Connected but failed to communicate with OpenClaw Gateway' }, { status: 503 });
     }
 
-    // Store the link in our database - session ID will be set when first message is sent
-    // For now, use agent name as the session identifier
     const sessionId = uuidv4();
     const openclawSessionId = `mission-control-${agent.name.toLowerCase().replace(/\s+/g, '-')}`;
     const now = new Date().toISOString();
 
-    run(
-      `INSERT INTO openclaw_sessions (id, agent_id, openclaw_session_id, channel, status, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      [sessionId, id, openclawSessionId, 'mission-control', 'active', now, now]
-    );
+    await OpenclawSession.create({
+      _id: sessionId,
+      agent_id: id,
+      openclaw_session_id: openclawSessionId,
+      channel: 'mission-control',
+      status: 'active',
+      created_at: now,
+    });
 
-    // Log event
-    run(
-      `INSERT INTO events (id, type, agent_id, message, created_at)
-       VALUES (?, ?, ?, ?, ?)`,
-      [uuidv4(), 'agent_status_changed', id, `${agent.name} connected to OpenClaw Gateway`, now]
-    );
+    await Event.create({
+      _id: uuidv4(), type: 'agent_status_changed', agent_id: id,
+      message: `${agent.name} connected to OpenClaw Gateway`, created_at: now,
+    });
 
-    const session = queryOne<OpenClawSession>(
-      'SELECT * FROM openclaw_sessions WHERE id = ?',
-      [sessionId]
-    );
-
-    return NextResponse.json({ linked: true, session }, { status: 201 });
+    const session = await OpenclawSession.findById(sessionId).lean();
+    return NextResponse.json({ linked: true, session: { ...session, id: (session as any)._id } }, { status: 201 });
   } catch (error) {
     console.error('Failed to link agent to OpenClaw:', error);
     return NextResponse.json(
@@ -118,48 +92,33 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
   }
 }
 
-// DELETE /api/agents/[id]/openclaw - Unlink agent from OpenClaw
+// DELETE /api/agents/[id]/openclaw
 export async function DELETE(request: NextRequest, { params }: RouteParams) {
   try {
+    await connectDb();
     const { id } = await params;
 
-    const agent = queryOne<Agent>('SELECT * FROM agents WHERE id = ?', [id]);
+    const agent = await Agent.findById(id).lean() as any;
     if (!agent) {
       return NextResponse.json({ error: 'Agent not found' }, { status: 404 });
     }
 
-    const existingSession = queryOne<OpenClawSession>(
-      'SELECT * FROM openclaw_sessions WHERE agent_id = ? AND status = ?',
-      [id, 'active']
-    );
-
+    const existingSession = await OpenclawSession.findOne({ agent_id: id, status: 'active' }).lean() as any;
     if (!existingSession) {
-      return NextResponse.json(
-        { error: 'Agent is not linked to an OpenClaw session' },
-        { status: 404 }
-      );
+      return NextResponse.json({ error: 'Agent is not linked to an OpenClaw session' }, { status: 404 });
     }
 
-    // Mark the session as inactive
     const now = new Date().toISOString();
-    run(
-      'UPDATE openclaw_sessions SET status = ?, updated_at = ? WHERE id = ?',
-      ['inactive', now, existingSession.id]
-    );
+    await OpenclawSession.findByIdAndUpdate(existingSession._id, { $set: { status: 'inactive' } });
 
-    // Log event
-    run(
-      `INSERT INTO events (id, type, agent_id, message, created_at)
-       VALUES (?, ?, ?, ?, ?)`,
-      [uuidv4(), 'agent_status_changed', id, `${agent.name} disconnected from OpenClaw Gateway`, now]
-    );
+    await Event.create({
+      _id: uuidv4(), type: 'agent_status_changed', agent_id: id,
+      message: `${agent.name} disconnected from OpenClaw Gateway`, created_at: now,
+    });
 
     return NextResponse.json({ linked: false, success: true });
   } catch (error) {
     console.error('Failed to unlink agent from OpenClaw:', error);
-    return NextResponse.json(
-      { error: 'Failed to unlink agent from OpenClaw' },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: 'Failed to unlink agent from OpenClaw' }, { status: 500 });
   }
 }

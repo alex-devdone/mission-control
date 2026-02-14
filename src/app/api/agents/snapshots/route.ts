@@ -1,50 +1,41 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { queryAll } from '@/lib/db';
-
-interface SnapshotRow {
-  snapshot_time: string;
-  agent_id: string;
-  agent_name: string;
-  status: string;
-  avatar_emoji: string;
-  model: string;
-  limit_5h: number;
-  limit_week: number;
-  task_id: string | null;
-  task_title: string | null;
-}
+import { connectDb, AgentSnapshot } from '@/lib/db';
 
 // GET /api/agents/snapshots?hours=24
-// Returns distinct snapshot timestamps and their agent data
 export async function GET(request: NextRequest) {
   try {
+    await connectDb();
     const { searchParams } = new URL(request.url);
     const hours = parseInt(searchParams.get('hours') || '24', 10);
-    const clampedHours = Math.min(Math.max(1, hours), 168); // 1h to 7d
+    const clampedHours = Math.min(Math.max(1, hours), 168);
 
-    const rows = queryAll<SnapshotRow>(
-      `SELECT snapshot_time, agent_id, agent_name, status, avatar_emoji, model, limit_5h, limit_week, task_id, task_title
-       FROM agent_snapshots
-       WHERE snapshot_time >= datetime('now', ?)
-       ORDER BY snapshot_time ASC, agent_name ASC`,
-      [`-${clampedHours} hours`]
-    );
+    const cutoff = new Date(Date.now() - clampedHours * 60 * 60 * 1000).toISOString();
+
+    const rows = await AgentSnapshot.find({
+      snapshot_time: { $gte: cutoff }
+    }).sort({ snapshot_time: 1, agent_name: 1 }).lean();
 
     // Group by snapshot_time
-    const snapshots: Record<string, SnapshotRow[]> = {};
+    const snapshots: Record<string, any[]> = {};
     for (const row of rows) {
-      if (!snapshots[row.snapshot_time]) {
-        snapshots[row.snapshot_time] = [];
-      }
-      snapshots[row.snapshot_time].push(row);
+      const r = row as any;
+      const time = r.snapshot_time;
+      if (!snapshots[time]) snapshots[time] = [];
+      snapshots[time].push({
+        snapshot_time: r.snapshot_time,
+        agent_id: r.agent_id,
+        agent_name: r.agent_name,
+        status: r.status,
+        avatar_emoji: r.avatar_emoji,
+        model: r.model,
+        limit_5h: r.limit_5h,
+        limit_week: r.limit_week,
+        task_id: r.task_id,
+        task_title: r.task_title,
+      });
     }
 
-    // Return as ordered array of { time, agents }
-    const result = Object.entries(snapshots).map(([time, agents]) => ({
-      time,
-      agents,
-    }));
-
+    const result = Object.entries(snapshots).map(([time, agents]) => ({ time, agents }));
     return NextResponse.json(result);
   } catch (error) {
     console.error('Failed to fetch snapshots:', error);

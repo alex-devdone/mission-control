@@ -242,6 +242,15 @@ export class OpenClawClient extends EventEmitter {
     });
   }
 
+  // Config and cron methods
+  async getConfig(): Promise<unknown> {
+    return this.call('config.get');
+  }
+
+  async listCronJobs(): Promise<unknown> {
+    return this.call('cron.list');
+  }
+
   // Session management methods
   async listSessions(): Promise<OpenClawSessionInfo[]> {
     return this.call<OpenClawSessionInfo[]>('sessions.list');

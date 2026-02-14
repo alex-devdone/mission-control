@@ -2,7 +2,7 @@
 
 import { create } from 'zustand';
 import { debug } from './debug';
-import type { Agent, Task, Conversation, Message, Event, TaskStatus, OpenClawSession } from './types';
+import type { Agent, Task, Conversation, Message, Event, TaskStatus, OpenClawSession, OpenClawAgentFull, CronJob, LiveSession } from './types';
 
 interface MissionControlState {
   // Data
@@ -15,7 +15,11 @@ interface MissionControlState {
 
   // OpenClaw state
   agentOpenClawSessions: Record<string, OpenClawSession | null>; // agentId -> session
-  openclawMessages: Message[]; // Messages from OpenClaw (displayed alongside regular messages)
+  openclawMessages: Message[];
+  // Observatory
+  openclawAgents: OpenClawAgentFull[];
+  cronJobs: CronJob[];
+  liveSessions: LiveSession[];
 
   // UI State
   selectedAgent: Agent | null;
@@ -52,6 +56,9 @@ interface MissionControlState {
   setAgentOpenClawSession: (agentId: string, session: OpenClawSession | null) => void;
   setOpenclawMessages: (messages: Message[]) => void;
   addOpenclawMessage: (message: Message) => void;
+  setOpenclawAgents: (agents: OpenClawAgentFull[]) => void;
+  setCronJobs: (jobs: CronJob[]) => void;
+  setLiveSessions: (sessions: LiveSession[]) => void;
 }
 
 export const useMissionControl = create<MissionControlState>((set) => ({
@@ -64,6 +71,9 @@ export const useMissionControl = create<MissionControlState>((set) => ({
   messages: [],
   agentOpenClawSessions: {},
   openclawMessages: [],
+  openclawAgents: [],
+  cronJobs: [],
+  liveSessions: [],
   selectedAgent: null,
   selectedTask: null,
   isOnline: false,
@@ -154,4 +164,7 @@ export const useMissionControl = create<MissionControlState>((set) => ({
   setOpenclawMessages: (messages) => set({ openclawMessages: messages }),
   addOpenclawMessage: (message) =>
     set((state) => ({ openclawMessages: [...state.openclawMessages, message] })),
+  setOpenclawAgents: (agents) => set({ openclawAgents: agents }),
+  setCronJobs: (jobs) => set({ cronJobs: jobs }),
+  setLiveSessions: (sessions) => set({ liveSessions: sessions }),
 }));

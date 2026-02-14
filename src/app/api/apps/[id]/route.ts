@@ -1,19 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { queryOne, run } from '@/lib/db';
-import type { App, UpdateAppRequest } from '@/lib/types';
+import { connectDb, App, Agent } from '@/lib/db';
+import type { App as AppType, UpdateAppRequest } from '@/lib/types';
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   try {
-    const app = queryOne<App>(
-      `SELECT a.*, ag.name as current_agent_name 
-       FROM apps a 
-       LEFT JOIN agents ag ON a.current_agent_id = ag.id 
-       WHERE a.id = ?`,
-      [id]
-    );
+    await connectDb();
+    const app = await App.findById(id).lean() as any;
     if (!app) return NextResponse.json({ error: 'App not found' }, { status: 404 });
-    return NextResponse.json(app);
+    const result: any = { ...app, id: app._id };
+    if (app.current_agent_id) {
+      const ag = await Agent.findById(app.current_agent_id).lean() as any;
+      if (ag) result.current_agent_name = ag.name;
+    }
+    return NextResponse.json(result);
   } catch (error) {
     return NextResponse.json({ error: 'Failed to fetch app' }, { status: 500 });
   }
@@ -22,31 +22,24 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   try {
+    await connectDb();
     const body: UpdateAppRequest = await req.json();
-    const now = new Date().toISOString();
-    
-    const fields: string[] = [];
-    const values: unknown[] = [];
-    
-    if (body.name !== undefined) { fields.push('name = ?'); values.push(body.name); }
-    if (body.description !== undefined) { fields.push('description = ?'); values.push(body.description); }
-    if (body.path !== undefined) { fields.push('path = ?'); values.push(body.path); }
-    if (body.port !== undefined) { fields.push('port = ?'); values.push(body.port); }
-    if (body.build_status !== undefined) { fields.push('build_status = ?'); values.push(body.build_status); }
-    if (body.progress_completed !== undefined) { fields.push('progress_completed = ?'); values.push(body.progress_completed); }
-    if (body.progress_total !== undefined) { fields.push('progress_total = ?'); values.push(body.progress_total); }
-    if (body.current_agent_id !== undefined) { fields.push('current_agent_id = ?'); values.push(body.current_agent_id); }
-    
-    if (fields.length === 0) return NextResponse.json({ error: 'No fields to update' }, { status: 400 });
-    
-    fields.push('updated_at = ?');
-    values.push(now);
-    values.push(id);
-    
-    run(`UPDATE apps SET ${fields.join(', ')} WHERE id = ?`, values);
-    
-    const app = queryOne<App>('SELECT * FROM apps WHERE id = ?', [id]);
-    return NextResponse.json(app);
+    const updates: Record<string, unknown> = {};
+
+    if (body.name !== undefined) updates.name = body.name;
+    if (body.description !== undefined) updates.description = body.description;
+    if (body.path !== undefined) updates.path = body.path;
+    if (body.port !== undefined) updates.port = body.port;
+    if (body.build_status !== undefined) updates.build_status = body.build_status;
+    if (body.progress_completed !== undefined) updates.progress_completed = body.progress_completed;
+    if (body.progress_total !== undefined) updates.progress_total = body.progress_total;
+    if (body.current_agent_id !== undefined) updates.current_agent_id = body.current_agent_id;
+
+    if (Object.keys(updates).length === 0) return NextResponse.json({ error: 'No fields to update' }, { status: 400 });
+
+    await App.findByIdAndUpdate(id, { $set: updates });
+    const app = await App.findById(id).lean() as any;
+    return NextResponse.json({ ...app, id: app._id });
   } catch (error) {
     return NextResponse.json({ error: 'Failed to update app' }, { status: 500 });
   }
@@ -55,7 +48,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   try {
-    run('DELETE FROM apps WHERE id = ?', [id]);
+    await connectDb();
+    await App.findByIdAndDelete(id);
     return NextResponse.json({ success: true });
   } catch (error) {
     return NextResponse.json({ error: 'Failed to delete app' }, { status: 500 });

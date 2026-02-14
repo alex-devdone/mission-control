@@ -35,6 +35,7 @@ export interface Agent {
   soul_md?: string;
   user_md?: string;
   agents_md?: string;
+  openclaw_agent_id?: string;
   model?: string;
   provider_account_id?: string;
   limit_5h?: number;
@@ -349,4 +350,35 @@ export interface SSEEvent {
   } | {
     id: string;  // For task_deleted events
   };
+}
+
+// OpenClaw Observatory types
+export interface OpenClawAgentFull {
+  id: string;
+  name: string;
+  workspace: string;
+  model: { primary: string; fallbacks?: string[] };
+  channels: { channel: string; accountId: string }[];
+  subagents?: { allowAgents: string[] };
+}
+
+export interface CronJob {
+  id: string;
+  name?: string;
+  agentId?: string;
+  enabled: boolean;
+  schedule: { kind: string; expr?: string; tz?: string; everyMs?: number; at?: string };
+  sessionTarget: string;
+  payload: { kind: string; message?: string; text?: string; model?: string };
+  state?: { lastRunAtMs?: number; lastStatus?: string; lastDurationMs?: number; consecutiveErrors?: number; lastError?: string; nextRunAtMs?: number };
+  delivery?: { mode: string; channel?: string; to?: string };
+}
+
+export interface LiveSession {
+  key: string;
+  kind: string;
+  channel: string;
+  updatedAt: number;
+  model: string;
+  totalTokens: number;
 }

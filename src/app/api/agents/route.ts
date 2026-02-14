@@ -1,24 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { v4 as uuidv4 } from 'uuid';
-import { queryAll, queryOne, run } from '@/lib/db';
-import type { Agent, CreateAgentRequest } from '@/lib/types';
+import { connectDb, Agent, Event } from '@/lib/db';
+import type { Agent as AgentType, CreateAgentRequest } from '@/lib/types';
 
 // GET /api/agents - List all agents
 export async function GET(request: NextRequest) {
   try {
+    await connectDb();
     const workspaceId = request.nextUrl.searchParams.get('workspace_id');
     
-    let agents: Agent[];
-    if (workspaceId) {
-      agents = queryAll<Agent>(`
-        SELECT * FROM agents WHERE workspace_id = ? ORDER BY is_master DESC, name ASC
-      `, [workspaceId]);
-    } else {
-      agents = queryAll<Agent>(`
-        SELECT * FROM agents ORDER BY is_master DESC, name ASC
-      `);
-    }
-    return NextResponse.json(agents);
+    const filter: Record<string, unknown> = {};
+    if (workspaceId) filter.workspace_id = workspaceId;
+    
+    const agents = await Agent.find(filter).sort({ is_master: -1, name: 1 }).lean();
+    const result = agents.map((a: any) => ({ ...a, id: a._id }));
+    return NextResponse.json(result);
   } catch (error) {
     console.error('Failed to fetch agents:', error);
     return NextResponse.json({ error: 'Failed to fetch agents' }, { status: 500 });
@@ -28,6 +24,7 @@ export async function GET(request: NextRequest) {
 // POST /api/agents - Create a new agent
 export async function POST(request: NextRequest) {
   try {
+    await connectDb();
     const body: CreateAgentRequest = await request.json();
 
     if (!body.name || !body.role) {
@@ -37,34 +34,30 @@ export async function POST(request: NextRequest) {
     const id = uuidv4();
     const now = new Date().toISOString();
 
-    run(
-      `INSERT INTO agents (id, name, role, description, avatar_emoji, is_master, workspace_id, soul_md, user_md, agents_md, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [
-        id,
-        body.name,
-        body.role,
-        body.description || null,
-        body.avatar_emoji || '🤖',
-        body.is_master ? 1 : 0,
-        (body as { workspace_id?: string }).workspace_id || 'default',
-        body.soul_md || null,
-        body.user_md || null,
-        body.agents_md || null,
-        now,
-        now,
-      ]
-    );
+    await Agent.create({
+      _id: id,
+      name: body.name,
+      role: body.role,
+      description: body.description || null,
+      avatar_emoji: body.avatar_emoji || '🤖',
+      is_master: body.is_master ? 1 : 0,
+      workspace_id: (body as { workspace_id?: string }).workspace_id || 'default',
+      soul_md: body.soul_md || null,
+      user_md: body.user_md || null,
+      agents_md: body.agents_md || null,
+    });
 
     // Log event
-    run(
-      `INSERT INTO events (id, type, agent_id, message, created_at)
-       VALUES (?, ?, ?, ?, ?)`,
-      [uuidv4(), 'agent_joined', id, `${body.name} joined the team`, now]
-    );
+    await Event.create({
+      _id: uuidv4(),
+      type: 'agent_joined',
+      agent_id: id,
+      message: `${body.name} joined the team`,
+      created_at: now,
+    });
 
-    const agent = queryOne<Agent>('SELECT * FROM agents WHERE id = ?', [id]);
-    return NextResponse.json(agent, { status: 201 });
+    const agent = await Agent.findById(id).lean();
+    return NextResponse.json({ ...agent, id: (agent as any)._id }, { status: 201 });
   } catch (error) {
     console.error('Failed to create agent:', error);
     return NextResponse.json({ error: 'Failed to create agent' }, { status: 500 });

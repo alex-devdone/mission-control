@@ -2,13 +2,14 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { LayoutGrid, Package, Zap, Users, Settings } from 'lucide-react';
+import { LayoutGrid, Package, Zap, Users, Settings, Eye } from 'lucide-react';
 import { useState } from 'react';
 
 const navItems = [
   { href: '/', icon: LayoutGrid, label: 'Home' },
   { href: '/workspace/default', icon: Zap, label: 'Tasks' },
   { href: '/apps', icon: Package, label: 'Apps' },
+  { href: '/observatory', icon: Eye, label: 'Observatory' },
 ];
 
 export function MobileBottomNav() {

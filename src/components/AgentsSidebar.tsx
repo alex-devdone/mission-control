@@ -7,6 +7,76 @@ import type { Agent, AgentStatus, OpenClawSession } from '@/lib/types';
 import { AgentModal } from './AgentModal';
 import { AgentChat } from './AgentChat';
 import { HealthBar } from './HealthBar';
+// OpenClawAgentsSidebar removed — using inline OpenClawAgentsSection instead
+
+function OpenClawAgentsSection() {
+  const { agents: mcAgents } = useMissionControl();
+  const [agents, setAgents] = useState<{ id: string; name: string; model: { primary: string }; channels: { channel: string }[] }[]>([]);
+  const [activeSessions, setActiveSessions] = useState<{ key: string }[]>([]);
+  const [expanded, setExpanded] = useState(true);
+
+  useEffect(() => {
+    fetch('/api/openclaw/agents-full')
+      .then(r => r.json())
+      .then(data => setAgents(data.agents || []))
+      .catch(() => {});
+    fetch('/api/openclaw/sessions-live')
+      .then(r => r.json())
+      .then(data => setActiveSessions(data.sessions || []))
+      .catch(() => {});
+  }, []);
+
+  if (agents.length === 0) return null;
+
+  const activeIds = new Set(activeSessions.map(s => s.key.split(':')[1]));
+
+  // Match OpenClaw agents to MC agents for health bar data
+  const mcAgentByOcId = new Map(mcAgents.filter(a => a.openclaw_agent_id).map(a => [a.openclaw_agent_id, a]));
+
+  return (
+    <div className="border-b border-mc-border mb-1">
+      <button
+        onClick={() => setExpanded(!expanded)}
+        className="w-full flex items-center justify-between px-1 py-2 text-xs text-mc-text-secondary hover:text-mc-text"
+      >
+        <span className="uppercase tracking-wider font-medium">OpenClaw Agents</span>
+        <span className="bg-mc-bg-tertiary px-1.5 py-0.5 rounded text-[10px]">{agents.length}</span>
+      </button>
+      {expanded && (
+        <div className="pb-2 space-y-0.5">
+          {agents.map(agent => {
+            const mcAgent = mcAgentByOcId.get(agent.id);
+            return (
+              <a
+                key={agent.id}
+                href="/observatory"
+                className="flex items-center gap-2 p-1.5 rounded hover:bg-mc-bg-tertiary transition-colors text-xs"
+              >
+                <div className="relative">
+                  <span className="text-sm">🤖</span>
+                  {activeIds.has(agent.id) && (
+                    <span className="absolute -bottom-0.5 -right-0.5 w-2 h-2 rounded-full bg-green-400 border border-mc-bg-secondary animate-pulse" />
+                  )}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="truncate text-mc-text">{agent.name}</div>
+                  <div className="flex items-center gap-1 mt-0.5">
+                    <ModelBadge model={agent.model.primary} />
+                    {agent.channels.some(c => c.channel === 'telegram') && <span className="text-[9px]">📱</span>}
+                    {agent.channels.some(c => c.channel === 'discord') && <span className="text-[9px]">💬</span>}
+                    {mcAgent && (
+                      <HealthBar percentage={mcAgent.limit_5h ?? 100} weekPercentage={mcAgent.limit_week !== 100 ? mcAgent.limit_week : null} size="sm" />
+                    )}
+                  </div>
+                </div>
+              </a>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
 
 function ModelBadge({ model }: { model: string }) {
   const m = model.toLowerCase();
@@ -225,6 +295,9 @@ export function AgentsSidebar({ workspaceId, isMobileOpen, onMobileClose }: Agen
 
       {/* Agent List */}
       <div className="flex-1 overflow-y-auto p-2 space-y-1">
+        {/* OpenClaw Agents Section (scrollable) */}
+        <OpenClawAgentsSection />
+
         {filteredAgents.map((agent) => {
           const openclawSession = agentOpenClawSessions[agent.id];
           const isConnecting = connectingAgentId === agent.id;

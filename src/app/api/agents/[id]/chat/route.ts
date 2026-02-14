@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { queryOne } from '@/lib/db';
+import { connectDb, Agent } from '@/lib/db';
 import { getOpenClawClient } from '@/lib/openclaw/client';
-import type { Agent } from '@/lib/types';
+import type { Agent as AgentType } from '@/lib/types';
 
 interface RouteParams {
   params: Promise<{ id: string }>;
@@ -14,10 +14,8 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
   const { id } = await params;
 
   try {
-    const agent = queryOne<Agent & { openclaw_agent_id?: string }>(
-      'SELECT * FROM agents WHERE id = ?',
-      [id]
-    );
+    await connectDb();
+    const agent = await Agent.findById(id).lean() as any;
     if (!agent || !agent.openclaw_agent_id) {
       return NextResponse.json({ error: 'Agent not found or has no OpenClaw ID' }, { status: 404 });
     }
@@ -29,18 +27,15 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       }
     }
 
-    // List sessions — try WS client first, fall back to HTTP
     let allSessions: any[] = [];
     try {
       const wsResult = await client.listSessions();
-      // WS may return {sessions: [...]} or just [...]
       if (Array.isArray(wsResult)) {
         allSessions = wsResult;
       } else if ((wsResult as any)?.sessions) {
         allSessions = (wsResult as any).sessions;
       }
     } catch {
-      // Fall back to HTTP endpoint
       try {
         const httpRes = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:17789'}/api/openclaw/sessions`);
         if (httpRes.ok) {
@@ -61,10 +56,8 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 
     const sessionKey = agentSession.key;
 
-    // Get history using chat.history
     try {
       const history = await client.call('chat.history', { sessionKey, limit: 50 });
-      // chat.history returns {messages: [...]} or just [...]
       const messages = Array.isArray(history) ? history : ((history as any)?.messages || (history as any)?.history || []);
       return NextResponse.json({ history: messages, sessionKey });
     } catch (e) {
@@ -84,6 +77,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
   const { id } = await params;
 
   try {
+    await connectDb();
     const body = await request.json();
     const { content } = body;
 
@@ -91,10 +85,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: 'content is required' }, { status: 400 });
     }
 
-    const agent = queryOne<Agent & { openclaw_agent_id?: string }>(
-      'SELECT * FROM agents WHERE id = ?',
-      [id]
-    );
+    const agent = await Agent.findById(id).lean() as any;
     if (!agent || !agent.openclaw_agent_id) {
       return NextResponse.json({ error: 'Agent not found or has no OpenClaw ID' }, { status: 404 });
     }
@@ -106,7 +97,6 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       }
     }
 
-    // Find agent's active session
     let allSessions: any[] = [];
     try {
       const wsResult = await client.listSessions();
@@ -133,7 +123,6 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
 
     const sessionKey = agentSession.key;
 
-    // Send via sessions.send with sessionKey
     await client.call('sessions.send', {
       sessionKey,
       message: `[Mission Control Chat] ${content}`,

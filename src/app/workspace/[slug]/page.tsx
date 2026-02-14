@@ -3,13 +3,14 @@
 import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
-import { ChevronLeft, LayoutGrid, Monitor, Users, Radio } from 'lucide-react';
+import { ChevronLeft, LayoutGrid, Monitor, Users, Radio, Clock } from 'lucide-react';
 import { Header } from '@/components/Header';
 import { AgentsSidebar } from '@/components/AgentsSidebar';
 import { MissionQueue } from '@/components/MissionQueue';
 import { LiveFeed } from '@/components/LiveFeed';
 import { SSEDebugPanel } from '@/components/SSEDebugPanel';
 import { PixelOffice } from '@/components/PixelOffice';
+import { SchedulerView } from '@/components/SchedulerView';
 import { useMissionControl } from '@/lib/store';
 import { useSSE } from '@/hooks/useSSE';
 import { debug } from '@/lib/debug';
@@ -30,7 +31,7 @@ export default function WorkspacePage() {
 
   const [workspace, setWorkspace] = useState<Workspace | null>(null);
   const [notFound, setNotFound] = useState(false);
-  const [view, setView] = useState<'kanban' | 'pixel'>('kanban');
+  const [view, setView] = useState<'kanban' | 'pixel' | 'schedulers'>('kanban');
   const [agentsOpen, setAgentsOpen] = useState(false);
   const [feedOpen, setFeedOpen] = useState(false);
 
@@ -250,6 +251,18 @@ export default function WorkspacePage() {
             <span className="hidden sm:inline">Pixel Office</span>
             <span className="sm:hidden">Pixel</span>
           </button>
+          <button
+            onClick={() => setView('schedulers')}
+            className={`flex items-center gap-1.5 px-3 py-1 rounded text-xs font-medium transition-colors ${
+              view === 'schedulers'
+                ? 'bg-mc-accent-purple/20 text-mc-accent-purple border border-mc-accent-purple/40'
+                : 'text-mc-text-secondary hover:text-mc-text hover:bg-mc-bg-tertiary'
+            }`}
+          >
+            <Clock className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">Schedulers</span>
+            <span className="sm:hidden">Cron</span>
+          </button>
         </div>
 
         {/* Mobile: Feed toggle */}
@@ -270,8 +283,10 @@ export default function WorkspacePage() {
         />
         {view === 'kanban' ? (
           <MissionQueue workspaceId={workspace.id} />
-        ) : (
+        ) : view === 'pixel' ? (
           <PixelOffice workspaceId={workspace.id} />
+        ) : (
+          <SchedulerView />
         )}
         <LiveFeed
           isMobileOpen={feedOpen}

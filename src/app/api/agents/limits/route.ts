@@ -1,15 +1,15 @@
 import { NextResponse } from 'next/server';
 import { v4 as uuidv4 } from 'uuid';
-import { getDb, queryAll, queryOne, run } from '@/lib/db';
+import { connectDb, Agent, Event, Task, AgentSnapshot } from '@/lib/db';
 import { broadcast } from '@/lib/events';
-import type { Agent } from '@/lib/types';
+import type { Agent as AgentType } from '@/lib/types';
 
 const AGENT_LIMITS_URL = 'http://localhost:5280/api/agents';
 
 interface AgentLimitsData {
-  id: string;          // openclaw agent id
+  id: string;
   name: string;
-  model: string;       // e.g. "anthropic/claude-opus-4-6"
+  model: string;
   provider_type: string;
   status: 'ok' | 'low' | 'critical' | 'unknown';
   limit_5h: number | null;
@@ -19,7 +19,6 @@ interface AgentLimitsData {
   fallbacks: string[];
 }
 
-/** Map full model string to short display name */
 function shortModelName(model: string): string {
   if (model.includes('opus-4-6')) return 'opus 4.6';
   if (model.includes('opus-4-5')) return 'opus 4.5';
@@ -27,12 +26,10 @@ function shortModelName(model: string): string {
   if (model.includes('haiku-4-5')) return 'haiku 4.5';
   if (model.includes('glm-5')) return 'GLM-5';
   if (model.includes('codex')) return 'codex';
-  // Fallback: last segment
   const parts = model.split('/');
   return parts[parts.length - 1];
 }
 
-/** Map provider_type to provider_account_id used in MC */
 function providerAccountId(providerType: string): string {
   switch (providerType) {
     case 'anthropic': return 'anthropic';
@@ -43,24 +40,24 @@ function providerAccountId(providerType: string): string {
   }
 }
 
-// GET /api/agents/limits - Return all agents with their current limits
+// GET /api/agents/limits
 export async function GET() {
   try {
-    const agents = queryAll<Agent>('SELECT id, name, model, provider_account_id, limit_5h, limit_week, last_poll_at FROM agents');
-    return NextResponse.json(agents);
+    await connectDb();
+    const agents = await Agent.find({}, 'name model provider_account_id limit_5h limit_week last_poll_at').lean();
+    const result = agents.map((a: any) => ({ ...a, id: a._id }));
+    return NextResponse.json(result);
   } catch (error) {
     console.error('Failed to fetch agent limits:', error);
     return NextResponse.json({ error: 'Failed to fetch agent limits' }, { status: 500 });
   }
 }
 
-// POST /api/agents/limits - Fetch limits from centralized agent-limits service
+// POST /api/agents/limits
 export async function POST() {
   try {
-    // Fetch from centralized agent-limits service
-    const res = await fetch(AGENT_LIMITS_URL, {
-      signal: AbortSignal.timeout(10000),
-    });
+    await connectDb();
+    const res = await fetch(AGENT_LIMITS_URL, { signal: AbortSignal.timeout(10000) });
 
     if (!res.ok) {
       const text = await res.text();
@@ -69,16 +66,12 @@ export async function POST() {
     }
 
     const limitsData: AgentLimitsData[] = await res.json();
-
-    // Build lookup by openclaw agent id
     const limitsByOcId = new Map<string, AgentLimitsData>();
     for (const ld of limitsData) {
       limitsByOcId.set(ld.id, ld);
     }
 
-    const agents = queryAll<Agent & { openclaw_agent_id?: string }>(
-      'SELECT * FROM agents'
-    );
+    const agents = await Agent.find({}).lean() as any[];
     const now = new Date().toISOString();
     let updated = 0;
 
@@ -91,97 +84,88 @@ export async function POST() {
 
       const limit5h = ld.limit_5h;
       const limitWeek = ld.limit_week;
-
       if (limit5h === null && limitWeek === null) continue;
 
       const old5h = agent.limit_5h ?? 100;
       const model = shortModelName(ld.model);
       const provider = providerAccountId(ld.provider_type);
-
       const effectiveLimit = limit5h ?? old5h;
       const depleted = ld.status === 'critical' || effectiveLimit < 10;
-
-      // Set agent status: depleted agents go to standby
       const newStatus = depleted ? 'standby' : agent.status;
 
-      run(
-        'UPDATE agents SET limit_5h = ?, limit_week = ?, model = ?, provider_account_id = ?, last_poll_at = ?, status = ? WHERE id = ?',
-        [effectiveLimit, limitWeek ?? agent.limit_week ?? 100, model, provider, now, newStatus, agent.id]
-      );
+      await Agent.findByIdAndUpdate(agent._id, {
+        $set: {
+          limit_5h: effectiveLimit,
+          limit_week: limitWeek ?? agent.limit_week ?? 100,
+          model, provider_account_id: provider,
+          last_poll_at: now, status: newStatus,
+        }
+      });
       updated++;
 
-      // Depleted agents: unassign from active tasks
       if (depleted) {
-        const unassigned = queryAll<{ id: string; title: string }>(
-          `SELECT id, title FROM tasks WHERE assigned_agent_id = ? AND status NOT IN ('done', 'review')`,
-          [agent.id]
-        );
+        const unassigned = await Task.find({
+          assigned_agent_id: agent._id,
+          status: { $nin: ['done', 'review'] }
+        }).lean() as any[];
 
         if (unassigned.length > 0) {
-          run(
-            `UPDATE tasks SET assigned_agent_id = NULL, status = CASE WHEN status IN ('in_progress', 'testing') THEN 'inbox' ELSE status END, updated_at = ? WHERE assigned_agent_id = ? AND status NOT IN ('done', 'review')`,
-            [now, agent.id]
-          );
-
           for (const task of unassigned) {
-            run(
-              'INSERT INTO events (id, type, agent_id, task_id, message, metadata, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
-              [
-                uuidv4(),
-                'task_status_changed',
-                agent.id,
-                task.id,
-                `${agent.name} unassigned from "${task.title}" — out of capacity (${Math.round(effectiveLimit)}%)`,
-                JSON.stringify({ reason: 'limit_depleted', limit_5h: effectiveLimit }),
-                now,
-              ]
-            );
-            const updatedTask = queryOne<{ id: string; title: string; status: string }>('SELECT * FROM tasks WHERE id = ?', [task.id]);
-            if (updatedTask) broadcast({ type: 'task_updated', payload: updatedTask as unknown as import('@/lib/types').Task });
+            const newTaskStatus = ['in_progress', 'testing'].includes(task.status) ? 'inbox' : task.status;
+            await Task.findByIdAndUpdate(task._id, {
+              $set: { assigned_agent_id: null, status: newTaskStatus, updated_at: now }
+            });
+
+            await Event.create({
+              _id: uuidv4(), type: 'task_status_changed', agent_id: agent._id, task_id: task._id,
+              message: `${agent.name} unassigned from "${task.title}" — out of capacity (${Math.round(effectiveLimit)}%)`,
+              metadata: { reason: 'limit_depleted', limit_5h: effectiveLimit },
+              created_at: now,
+            });
+            const updatedTask = await Task.findById(task._id).lean();
+            if (updatedTask) broadcast({ type: 'task_updated', payload: { ...updatedTask, id: (updatedTask as any)._id } as unknown as import('@/lib/types').Task });
           }
         }
       }
 
-      // Broadcast agent update via SSE
-      const refreshed = queryOne<Agent>('SELECT * FROM agents WHERE id = ?', [agent.id]);
+      const refreshed = await Agent.findById(agent._id).lean();
       if (refreshed) {
-        broadcast({ type: 'agent_updated', payload: refreshed });
+        broadcast({ type: 'agent_updated', payload: { ...refreshed, id: (refreshed as any)._id } as unknown as AgentType });
       }
 
-      // Create event if limit changed significantly
       if (limit5h !== null) {
         const diff = effectiveLimit - old5h;
         if (Math.abs(diff) > 5) {
           const direction = diff > 0 ? 'recovered' : 'dropped';
-          run(
-            'INSERT INTO events (id, type, agent_id, message, metadata, created_at) VALUES (?, ?, ?, ?, ?, ?)',
-            [
-              uuidv4(),
-              'agent_status_changed',
-              agent.id,
-              `${agent.name} capacity ${direction} to ${effectiveLimit}%`,
-              JSON.stringify({ old: old5h, new: effectiveLimit }),
-              now,
-            ]
-          );
+          await Event.create({
+            _id: uuidv4(), type: 'agent_status_changed', agent_id: agent._id,
+            message: `${agent.name} capacity ${direction} to ${effectiveLimit}%`,
+            metadata: { old: old5h, new: effectiveLimit },
+            created_at: now,
+          });
         }
       }
     }
 
-    // Record snapshots for time travel
+    // Record snapshots
     try {
-      const allAgents = queryAll<Agent>(
-        'SELECT a.*, t.id as active_task_id, t.title as active_task_title FROM agents a LEFT JOIN tasks t ON t.assigned_agent_id = a.id AND t.status NOT IN (\'done\', \'review\') ORDER BY a.id'
-      );
-      const snapshotStmt = getDb().prepare(
-        'INSERT INTO agent_snapshots (snapshot_time, agent_id, agent_name, status, avatar_emoji, model, limit_5h, limit_week, task_id, task_title) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
-      );
+      const allAgents = await Agent.find({}).lean() as any[];
       for (const a of allAgents) {
-        const row = a as Agent & { active_task_id?: string; active_task_title?: string };
-        snapshotStmt.run(now, a.id, a.name, a.status, a.avatar_emoji, a.model ?? 'unknown', a.limit_5h ?? 100, a.limit_week ?? 100, row.active_task_id ?? null, row.active_task_title ?? null);
+        const activeTask = await Task.findOne({
+          assigned_agent_id: a._id,
+          status: { $nin: ['done', 'review'] }
+        }).lean() as any;
+        
+        await AgentSnapshot.create({
+          snapshot_time: now, agent_id: a._id, agent_name: a.name,
+          status: a.status, avatar_emoji: a.avatar_emoji, model: a.model ?? 'unknown',
+          limit_5h: a.limit_5h ?? 100, limit_week: a.limit_week ?? 100,
+          task_id: activeTask?._id ?? null, task_title: activeTask?.title ?? null,
+        });
       }
       // Prune snapshots older than 7 days
-      run('DELETE FROM agent_snapshots WHERE snapshot_time < datetime(?, \'-7 days\')', [now]);
+      const cutoff = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+      await AgentSnapshot.deleteMany({ snapshot_time: { $lt: cutoff } });
     } catch (snapErr) {
       console.error('[limits-poll] Failed to record snapshots:', snapErr);
     }

@@ -1,80 +1,52 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getDb } from '@/lib/db';
-import type { Workspace, WorkspaceStats, TaskStatus } from '@/lib/types';
+import { connectDb, Workspace, Task, Agent } from '@/lib/db';
+import type { Workspace as WorkspaceType, WorkspaceStats, TaskStatus } from '@/lib/types';
 
-// Helper to generate slug from name
 function generateSlug(name: string): string {
-  return name
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-|-$/g, '');
+  return name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 }
 
-// GET /api/workspaces - List all workspaces with stats
 export async function GET(request: NextRequest) {
   const includeStats = request.nextUrl.searchParams.get('stats') === 'true';
 
   try {
-    const db = getDb();
-    
+    await connectDb();
+
     if (includeStats) {
-      // Get workspaces with task counts and agent counts
-      const workspaces = db.prepare('SELECT * FROM workspaces ORDER BY name').all() as Workspace[];
-      
-      const stats: WorkspaceStats[] = workspaces.map(workspace => {
-        // Get task counts by status
-        const taskCounts = db.prepare(`
-          SELECT status, COUNT(*) as count 
-          FROM tasks 
-          WHERE workspace_id = ? 
-          GROUP BY status
-        `).all(workspace.id) as { status: TaskStatus; count: number }[];
-        
+      const workspaces = await Workspace.find({}).sort({ name: 1 }).lean() as any[];
+      const stats: WorkspaceStats[] = [];
+
+      for (const workspace of workspaces) {
+        const tasks = await Task.find({ workspace_id: workspace._id }).lean() as any[];
         const counts: WorkspaceStats['taskCounts'] = {
-          planning: 0,
-          inbox: 0,
-          assigned: 0,
-          in_progress: 0,
-          testing: 0,
-          review: 0,
-          done: 0,
-          total: 0
+          planning: 0, inbox: 0, assigned: 0, in_progress: 0,
+          testing: 0, review: 0, done: 0, total: 0
         };
-        
-        taskCounts.forEach(tc => {
-          counts[tc.status] = tc.count;
-          counts.total += tc.count;
+        for (const t of tasks) {
+          if (t.status in counts) (counts as any)[t.status]++;
+          counts.total++;
+        }
+
+        const agentCount = await Agent.countDocuments({ workspace_id: workspace._id });
+        stats.push({
+          id: workspace._id, name: workspace.name, slug: workspace.slug,
+          icon: workspace.icon, taskCounts: counts, agentCount,
         });
-        
-        // Get agent count
-        const agentCount = db.prepare(
-          'SELECT COUNT(*) as count FROM agents WHERE workspace_id = ?'
-        ).get(workspace.id) as { count: number };
-        
-        return {
-          id: workspace.id,
-          name: workspace.name,
-          slug: workspace.slug,
-          icon: workspace.icon,
-          taskCounts: counts,
-          agentCount: agentCount.count
-        };
-      });
-      
+      }
       return NextResponse.json(stats);
     }
-    
-    const workspaces = db.prepare('SELECT * FROM workspaces ORDER BY name').all();
-    return NextResponse.json(workspaces);
+
+    const workspaces = await Workspace.find({}).sort({ name: 1 }).lean() as any[];
+    return NextResponse.json(workspaces.map(w => ({ ...w, id: w._id })));
   } catch (error) {
     console.error('Failed to fetch workspaces:', error);
     return NextResponse.json({ error: 'Failed to fetch workspaces' }, { status: 500 });
   }
 }
 
-// POST /api/workspaces - Create a new workspace
 export async function POST(request: NextRequest) {
   try {
+    await connectDb();
     const body = await request.json();
     const { name, description, icon } = body;
 
@@ -82,23 +54,15 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Name is required' }, { status: 400 });
     }
 
-    const db = getDb();
     const id = crypto.randomUUID();
     const slug = generateSlug(name);
-    
-    // Check if slug already exists
-    const existing = db.prepare('SELECT id FROM workspaces WHERE slug = ?').get(slug);
-    if (existing) {
-      return NextResponse.json({ error: 'A workspace with this name already exists' }, { status: 400 });
-    }
 
-    db.prepare(`
-      INSERT INTO workspaces (id, name, slug, description, icon)
-      VALUES (?, ?, ?, ?, ?)
-    `).run(id, name.trim(), slug, description || null, icon || '📁');
+    const existing = await Workspace.findOne({ slug }).lean();
+    if (existing) return NextResponse.json({ error: 'A workspace with this name already exists' }, { status: 400 });
 
-    const workspace = db.prepare('SELECT * FROM workspaces WHERE id = ?').get(id);
-    return NextResponse.json(workspace, { status: 201 });
+    await Workspace.create({ _id: id, name: name.trim(), slug, description: description || null, icon: icon || '📁' });
+    const workspace = await Workspace.findById(id).lean() as any;
+    return NextResponse.json({ ...workspace, id: workspace._id }, { status: 201 });
   } catch (error) {
     console.error('Failed to create workspace:', error);
     return NextResponse.json({ error: 'Failed to create workspace' }, { status: 500 });

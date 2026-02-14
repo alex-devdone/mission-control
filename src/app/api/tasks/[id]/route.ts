@@ -1,31 +1,35 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { v4 as uuidv4 } from 'uuid';
-import { queryOne, run, queryAll } from '@/lib/db';
+import { connectDb, Task, Agent, Event, OpenclawSession, Conversation, TaskActivity } from '@/lib/db';
 import { broadcast } from '@/lib/events';
 import { getMissionControlUrl } from '@/lib/config';
-import type { Task, UpdateTaskRequest, Agent, TaskDeliverable } from '@/lib/types';
+import type { Task as TaskType, UpdateTaskRequest, Agent as AgentType } from '@/lib/types';
 
-// GET /api/tasks/[id] - Get a single task
+async function getTaskWithAgents(id: string) {
+  const task = await Task.findById(id).lean() as any;
+  if (!task) return null;
+  const result: any = { ...task, id: task._id };
+  if (task.assigned_agent_id) {
+    const aa = await Agent.findById(task.assigned_agent_id).lean() as any;
+    if (aa) { result.assigned_agent_name = aa.name; result.assigned_agent_emoji = aa.avatar_emoji; }
+  }
+  if (task.created_by_agent_id) {
+    const ca = await Agent.findById(task.created_by_agent_id).lean() as any;
+    if (ca) { result.created_by_agent_name = ca.name; result.created_by_agent_emoji = ca.avatar_emoji; }
+  }
+  return result;
+}
+
+// GET /api/tasks/[id]
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    await connectDb();
     const { id } = await params;
-    const task = queryOne<Task>(
-      `SELECT t.*,
-        aa.name as assigned_agent_name,
-        aa.avatar_emoji as assigned_agent_emoji
-       FROM tasks t
-       LEFT JOIN agents aa ON t.assigned_agent_id = aa.id
-       WHERE t.id = ?`,
-      [id]
-    );
-
-    if (!task) {
-      return NextResponse.json({ error: 'Task not found' }, { status: 404 });
-    }
-
+    const task = await getTaskWithAgents(id);
+    if (!task) return NextResponse.json({ error: 'Task not found' }, { status: 404 });
     return NextResponse.json(task);
   } catch (error) {
     console.error('Failed to fetch task:', error);
@@ -33,111 +37,59 @@ export async function GET(
   }
 }
 
-// PATCH /api/tasks/[id] - Update a task
+// PATCH /api/tasks/[id]
 export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    await connectDb();
     const { id } = await params;
     const body: UpdateTaskRequest & { updated_by_agent_id?: string } = await request.json();
 
-    const existing = queryOne<Task>('SELECT * FROM tasks WHERE id = ?', [id]);
-    if (!existing) {
-      return NextResponse.json({ error: 'Task not found' }, { status: 404 });
-    }
+    const existing = await Task.findById(id).lean() as any;
+    if (!existing) return NextResponse.json({ error: 'Task not found' }, { status: 404 });
 
-    const updates: string[] = [];
-    const values: unknown[] = [];
+    const updates: Record<string, unknown> = {};
     const now = new Date().toISOString();
 
-    // Workflow enforcement for agent-initiated approvals
-    // If an agent is trying to move review→done, they must be a master agent
-    // User-initiated moves (no agent ID) are allowed
     if (body.status === 'done' && existing.status === 'review' && body.updated_by_agent_id) {
-      const updatingAgent = queryOne<Agent>(
-        'SELECT is_master FROM agents WHERE id = ?',
-        [body.updated_by_agent_id]
-      );
-
+      const updatingAgent = await Agent.findById(body.updated_by_agent_id).lean() as any;
       if (!updatingAgent || !updatingAgent.is_master) {
-        return NextResponse.json(
-          { error: 'Forbidden: only master agent (Charlie) can approve tasks' },
-          { status: 403 }
-        );
+        return NextResponse.json({ error: 'Forbidden: only master agent (Charlie) can approve tasks' }, { status: 403 });
       }
     }
 
-    if (body.title !== undefined) {
-      updates.push('title = ?');
-      values.push(body.title);
-    }
-    if (body.description !== undefined) {
-      updates.push('description = ?');
-      values.push(body.description);
-    }
-    if (body.priority !== undefined) {
-      updates.push('priority = ?');
-      values.push(body.priority);
-    }
-    if (body.due_date !== undefined) {
-      updates.push('due_date = ?');
-      values.push(body.due_date);
-    }
-    if (body.app_id !== undefined) {
-      updates.push('app_id = ?');
-      values.push(body.app_id);
-    }
+    if (body.title !== undefined) updates.title = body.title;
+    if (body.description !== undefined) updates.description = body.description;
+    if (body.priority !== undefined) updates.priority = body.priority;
+    if (body.due_date !== undefined) updates.due_date = body.due_date;
+    if (body.app_id !== undefined) updates.app_id = body.app_id;
 
-    // Track if we need to dispatch task
     let shouldDispatch = false;
 
-    // Handle status change
     if (body.status !== undefined && body.status !== existing.status) {
-      updates.push('status = ?');
-      values.push(body.status);
+      updates.status = body.status;
+      if (body.status === 'assigned' && existing.assigned_agent_id) shouldDispatch = true;
 
-      // Auto-dispatch when moving to assigned
-      if (body.status === 'assigned' && existing.assigned_agent_id) {
-        shouldDispatch = true;
-      }
-
-      // Free the assigned agent when task moves to review or done
       if ((body.status === 'review' || body.status === 'done') && existing.assigned_agent_id) {
-        // Only set to standby if agent has no other active tasks
-        const otherActiveTasks = queryOne<{ count: number }>(
-          `SELECT COUNT(*) as count FROM tasks
-           WHERE assigned_agent_id = ? AND id != ? AND status NOT IN ('done', 'review', 'backlog')`,
-          [existing.assigned_agent_id, id]
-        );
-        if (!otherActiveTasks || otherActiveTasks.count === 0) {
-          run(
-            'UPDATE agents SET status = ?, updated_at = ? WHERE id = ?',
-            ['standby', now, existing.assigned_agent_id]
-          );
-          // Broadcast agent update
-          const updatedAgent = queryOne<Agent>(
-            'SELECT * FROM agents WHERE id = ?',
-            [existing.assigned_agent_id]
-          );
-          if (updatedAgent) {
-            broadcast({
-              type: 'agent_updated',
-              payload: updatedAgent,
-            });
-          }
+        const otherActive = await Task.countDocuments({
+          assigned_agent_id: existing.assigned_agent_id, _id: { $ne: id },
+          status: { $nin: ['done', 'review', 'backlog'] }
+        });
+        if (otherActive === 0) {
+          await Agent.findByIdAndUpdate(existing.assigned_agent_id, { $set: { status: 'standby' } });
+          const updatedAgent = await Agent.findById(existing.assigned_agent_id).lean() as any;
+          if (updatedAgent) broadcast({ type: 'agent_updated', payload: { ...updatedAgent, id: updatedAgent._id } as unknown as AgentType });
         }
       }
 
-      // Log status change event
       const eventType = body.status === 'done' ? 'task_completed' : 'task_status_changed';
-      run(
-        `INSERT INTO events (id, type, task_id, message, created_at)
-         VALUES (?, ?, ?, ?, ?)`,
-        [uuidv4(), eventType, id, `Task "${existing.title}" moved to ${body.status}`, now]
-      );
+      await Event.create({
+        _id: uuidv4(), type: eventType, task_id: id,
+        message: `Task "${existing.title}" moved to ${body.status}`, created_at: now,
+      });
 
-      // Recalculate app progress when task completes
       if ((body.status === 'done' || body.status === 'review') && existing.app_id) {
         const missionControlUrl = getMissionControlUrl();
         fetch(`${missionControlUrl}/api/apps/${existing.app_id}/progress`, { method: 'POST' })
@@ -145,70 +97,34 @@ export async function PATCH(
       }
     }
 
-    // Handle assignment change
     if (body.assigned_agent_id !== undefined && body.assigned_agent_id !== existing.assigned_agent_id) {
-      updates.push('assigned_agent_id = ?');
-      values.push(body.assigned_agent_id);
-
+      updates.assigned_agent_id = body.assigned_agent_id;
       if (body.assigned_agent_id) {
-        const agent = queryOne<Agent>('SELECT name FROM agents WHERE id = ?', [body.assigned_agent_id]);
+        const agent = await Agent.findById(body.assigned_agent_id).lean() as any;
         if (agent) {
-          run(
-            `INSERT INTO events (id, type, agent_id, task_id, message, created_at)
-             VALUES (?, ?, ?, ?, ?, ?)`,
-            [uuidv4(), 'task_assigned', body.assigned_agent_id, id, `"${existing.title}" assigned to ${agent.name}`, now]
-          );
-
-          // Auto-dispatch if already in assigned status or being assigned now
-          if (existing.status === 'assigned' || body.status === 'assigned') {
-            shouldDispatch = true;
-          }
+          await Event.create({
+            _id: uuidv4(), type: 'task_assigned', agent_id: body.assigned_agent_id, task_id: id,
+            message: `"${existing.title}" assigned to ${agent.name}`, created_at: now,
+          });
+          if (existing.status === 'assigned' || body.status === 'assigned') shouldDispatch = true;
         }
       }
     }
 
-    if (updates.length === 0) {
+    if (Object.keys(updates).length === 0) {
       return NextResponse.json({ error: 'No updates provided' }, { status: 400 });
     }
 
-    updates.push('updated_at = ?');
-    values.push(now);
-    values.push(id);
+    await Task.findByIdAndUpdate(id, { $set: updates });
+    const task = await getTaskWithAgents(id);
 
-    run(`UPDATE tasks SET ${updates.join(', ')} WHERE id = ?`, values);
+    if (task) broadcast({ type: 'task_updated', payload: task as TaskType });
 
-    // Fetch updated task with all joined fields
-    const task = queryOne<Task>(
-      `SELECT t.*,
-        aa.name as assigned_agent_name,
-        aa.avatar_emoji as assigned_agent_emoji,
-        ca.name as created_by_agent_name,
-        ca.avatar_emoji as created_by_agent_emoji
-       FROM tasks t
-       LEFT JOIN agents aa ON t.assigned_agent_id = aa.id
-       LEFT JOIN agents ca ON t.created_by_agent_id = ca.id
-       WHERE t.id = ?`,
-      [id]
-    );
-
-    // Broadcast task update via SSE
-    if (task) {
-      broadcast({
-        type: 'task_updated',
-        payload: task,
-      });
-    }
-
-    // Trigger auto-dispatch if needed
     if (shouldDispatch) {
-      // Call dispatch endpoint asynchronously (don't wait for response)
       const missionControlUrl = getMissionControlUrl();
       fetch(`${missionControlUrl}/api/tasks/${id}/dispatch`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' }
-      }).catch(err => {
-        console.error('Auto-dispatch failed:', err);
-      });
+        method: 'POST', headers: { 'Content-Type': 'application/json' }
+      }).catch(err => console.error('Auto-dispatch failed:', err));
     }
 
     return NextResponse.json(task);
@@ -218,35 +134,27 @@ export async function PATCH(
   }
 }
 
-// DELETE /api/tasks/[id] - Delete a task
+// DELETE /api/tasks/[id]
 export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    await connectDb();
     const { id } = await params;
-    const existing = queryOne<Task>('SELECT * FROM tasks WHERE id = ?', [id]);
+    const existing = await Task.findById(id).lean();
+    if (!existing) return NextResponse.json({ error: 'Task not found' }, { status: 404 });
 
-    if (!existing) {
-      return NextResponse.json({ error: 'Task not found' }, { status: 404 });
-    }
+    await OpenclawSession.deleteMany({ task_id: id });
+    await Event.deleteMany({ task_id: id });
+    await Conversation.updateMany({ task_id: id }, { $set: { task_id: null } });
+    // task_activities and task_deliverables - delete manually since no cascade in mongo
+    await TaskActivity.deleteMany({ task_id: id });
+    const { TaskDeliverable } = await import('@/lib/db');
+    await TaskDeliverable.deleteMany({ task_id: id });
+    await Task.findByIdAndDelete(id);
 
-    // Delete or nullify related records first (foreign key constraints)
-    // Note: task_activities and task_deliverables have ON DELETE CASCADE
-    run('DELETE FROM openclaw_sessions WHERE task_id = ?', [id]);
-    run('DELETE FROM events WHERE task_id = ?', [id]);
-    // Conversations reference tasks - nullify or delete
-    run('UPDATE conversations SET task_id = NULL WHERE task_id = ?', [id]);
-
-    // Now delete the task (cascades to task_activities and task_deliverables)
-    run('DELETE FROM tasks WHERE id = ?', [id]);
-
-    // Broadcast deletion via SSE
-    broadcast({
-      type: 'task_deleted',
-      payload: { id },
-    });
-
+    broadcast({ type: 'task_deleted', payload: { id } });
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error('Failed to delete task:', error);

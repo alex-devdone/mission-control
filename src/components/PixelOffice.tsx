@@ -358,6 +358,10 @@ interface PixelOfficeProps {
 export function PixelOffice({ workspaceId }: PixelOfficeProps) {
   const { agents, tasks } = useMissionControl();
 
+  // OpenClaw agents (all 16)
+  const [openclawAgents, setOpenclawAgents] = useState<{ id: string; name: string; model: { primary: string }; channels: { channel: string }[] }[]>([]);
+  const [liveSessions, setLiveSessions] = useState<{ key: string; updatedAt: number }[]>([]);
+
   // Time travel state
   const [snapshots, setSnapshots] = useState<Snapshot[]>([]);
   const [snapshotIndex, setSnapshotIndex] = useState(0);
@@ -366,6 +370,23 @@ export function PixelOffice({ workspaceId }: PixelOfficeProps) {
   const playRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const isLive = snapshotIndex >= snapshots.length;
+
+  // Load OpenClaw agents + live sessions
+  useEffect(() => {
+    const fetchOC = async () => {
+      try {
+        const [aRes, sRes] = await Promise.all([
+          fetch('/api/openclaw/agents-full'),
+          fetch('/api/openclaw/sessions-live'),
+        ]);
+        if (aRes.ok) { const d = await aRes.json(); setOpenclawAgents(d.agents || []); }
+        if (sRes.ok) { const d = await sRes.json(); setLiveSessions(d.sessions || []); }
+      } catch { /* ignore */ }
+    };
+    fetchOC();
+    const interval = setInterval(fetchOC, 15000);
+    return () => clearInterval(interval);
+  }, []);
 
   // Load snapshots on mount
   useEffect(() => {
@@ -425,9 +446,46 @@ export function PixelOffice({ workspaceId }: PixelOfficeProps) {
   let getTaskTitle: (agentId: string) => string | undefined;
 
   if (isLive) {
-    // Live mode
-    displayWorking = agents.filter((a) => a.status === 'working');
-    displayIdle = agents.filter((a) => a.status !== 'working');
+    // Live mode — merge MC agents with OpenClaw agents
+    const mcAgentIds = new Set(agents.map(a => a.id));
+    const activeAgentIds = new Set(
+      liveSessions
+        .filter(s => Date.now() - s.updatedAt < 300000) // active in last 5 min
+        .map(s => s.key.split(':')[1])
+    );
+
+    // Create Agent-like objects for OpenClaw agents not already in MC
+    const ocOnlyAgents: Agent[] = openclawAgents
+      .filter(oa => !agents.some(a => (a as Agent & { openclaw_agent_id?: string }).openclaw_agent_id === oa.id || a.name === oa.name))
+      .map(oa => ({
+        id: oa.id,
+        name: oa.name,
+        role: '',
+        avatar_emoji: '🤖',
+        status: (activeAgentIds.has(oa.id) ? 'working' : 'standby') as Agent['status'],
+        is_master: false,
+        workspace_id: workspaceId || 'default',
+        model: oa.model.primary.split('/').pop() || oa.model.primary,
+        limit_5h: 100,
+        limit_week: 100,
+        created_at: '',
+        updated_at: '',
+      }));
+
+    // Update MC agents status based on live sessions
+    const allAgents = [
+      ...agents.map(a => {
+        const ocId = (a as Agent & { openclaw_agent_id?: string }).openclaw_agent_id;
+        if (ocId && activeAgentIds.has(ocId)) {
+          return { ...a, status: 'working' as Agent['status'] };
+        }
+        return a;
+      }),
+      ...ocOnlyAgents,
+    ];
+
+    displayWorking = allAgents.filter((a) => a.status === 'working');
+    displayIdle = allAgents.filter((a) => a.status !== 'working');
     getTaskTitle = (agentId: string) => {
       const t = tasks.find(
         (t) => t.assigned_agent_id === agentId && t.status !== 'done' && t.status !== 'review'
