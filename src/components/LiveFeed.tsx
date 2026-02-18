@@ -159,13 +159,7 @@ export function LiveFeed({ isMobileOpen, onMobileClose }: LiveFeedProps) {
           </div>
           <div className="space-y-0.5 mb-2">
             {liveSessions.map((s) => (
-              <div key={s.key} className="flex items-center gap-2 px-2 py-1.5 rounded bg-green-500/5 border border-green-500/10">
-                <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse flex-shrink-0" />
-                <span className="text-xs text-mc-text truncate">{describeSession(s)}</span>
-                <span className="text-[9px] text-mc-text-secondary ml-auto flex-shrink-0">
-                  {formatDistanceToNow(s.updatedAt, { addSuffix: true })}
-                </span>
-              </div>
+              <LiveSessionItem key={s.key} session={s} />
             ))}
           </div>
         </div>
@@ -213,7 +207,96 @@ export function LiveFeed({ isMobileOpen, onMobileClose }: LiveFeedProps) {
   return collapsed ? collapsedStrip : feedContent;
 }
 
+function LiveSessionItem({ session: s }: { session: LiveSessionInfo }) {
+  const [expanded, setExpanded] = useState(false);
+
+  return (
+    <div
+      onClick={() => setExpanded(!expanded)}
+      className="px-2 py-1.5 rounded bg-green-500/5 border border-green-500/10 cursor-pointer hover:bg-green-500/10 transition-colors"
+    >
+      <div className="flex items-center gap-2">
+        <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse flex-shrink-0" />
+        <span className="text-xs text-mc-text truncate">{describeSession(s)}</span>
+        <span className="text-[9px] text-mc-text-secondary ml-auto flex-shrink-0">
+          {formatDistanceToNow(s.updatedAt, { addSuffix: true })}
+        </span>
+        <ChevronRight className={`w-3 h-3 text-mc-text-secondary transition-transform ${expanded ? 'rotate-90' : ''}`} />
+      </div>
+      {expanded && (
+        <div className="mt-1.5 ml-3.5 pt-1.5 border-t border-green-500/10 space-y-1">
+          {s.model && (
+            <div className="flex items-center gap-2 text-[11px]">
+              <span className="text-mc-text-secondary">model:</span>
+              <span className="text-mc-text">{s.model}</span>
+            </div>
+          )}
+          {s.totalTokens > 0 && (
+            <div className="flex items-center gap-2 text-[11px]">
+              <span className="text-mc-text-secondary">tokens:</span>
+              <span className="text-mc-cyan font-medium">{formatTokens(s.totalTokens)}</span>
+            </div>
+          )}
+          {s.channel && s.channel !== 'unknown' && (
+            <div className="flex items-center gap-2 text-[11px]">
+              <span className="text-mc-text-secondary">channel:</span>
+              <span className="text-mc-text">{s.channel}</span>
+            </div>
+          )}
+          {s.kind && (
+            <div className="flex items-center gap-2 text-[11px]">
+              <span className="text-mc-text-secondary">kind:</span>
+              <span className="text-mc-text">{s.kind}</span>
+            </div>
+          )}
+          <div className="flex items-center gap-2 text-[11px]">
+            <span className="text-mc-text-secondary">session:</span>
+            <span className="text-mc-text font-mono text-[10px] truncate">{s.key}</span>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function parseMetadata(metadata?: string): Record<string, unknown> | null {
+  if (!metadata) return null;
+  try {
+    const parsed = typeof metadata === 'string' ? JSON.parse(metadata) : metadata;
+    return typeof parsed === 'object' && parsed !== null ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function formatTokens(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`;
+  return String(n);
+}
+
+function MetadataDetails({ meta }: { meta: Record<string, unknown> }) {
+  const entries = Object.entries(meta).filter(([, v]) => v !== null && v !== undefined);
+  if (entries.length === 0) return null;
+
+  return (
+    <div className="mt-2 space-y-1">
+      {entries.map(([key, value]) => (
+        <div key={key} className="flex items-start gap-2 text-[11px]">
+          <span className="text-mc-text-secondary shrink-0">{key.replace(/_/g, ' ')}:</span>
+          <span className="text-mc-text break-all">
+            {typeof value === 'object' ? JSON.stringify(value) : String(value)}
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function EventItem({ event }: { event: Event }) {
+  const [expanded, setExpanded] = useState(false);
+  const meta = parseMetadata(event.metadata);
+
   const getEventIcon = (type: string) => {
     switch (type) {
       case 'task_created': return '📋';
@@ -231,15 +314,22 @@ function EventItem({ event }: { event: Event }) {
 
   const isTaskEvent = ['task_created', 'task_assigned', 'task_completed'].includes(event.type);
   const isLimitEvent = event.type === 'limit_change';
-  const limitDropping = isLimitEvent && event.metadata && (() => { try { const m = JSON.parse(event.metadata!); return m.new < m.old; } catch { return false; } })();
+  const limitDropping = isLimitEvent && meta && typeof meta.new === 'number' && typeof meta.old === 'number' && meta.new < meta.old;
   const isHighlight = event.type === 'task_created' || event.type === 'task_completed';
+
+  const hasDetails = meta || event.agent_id || event.task_id;
 
   return (
     <div
-      className={`p-2 rounded border-l-2 animate-slide-in ${
+      onClick={() => hasDetails && setExpanded(!expanded)}
+      className={`p-2 rounded border-l-2 animate-slide-in transition-colors ${
+        hasDetails ? 'cursor-pointer' : ''
+      } ${
         isHighlight
           ? 'bg-mc-bg-tertiary border-mc-accent-pink'
-          : 'bg-transparent border-transparent hover:bg-mc-bg-tertiary'
+          : expanded
+            ? 'bg-mc-bg-tertiary border-mc-accent/50'
+            : 'bg-transparent border-transparent hover:bg-mc-bg-tertiary'
       }`}
     >
       <div className="flex items-start gap-2">
@@ -251,9 +341,36 @@ function EventItem({ event }: { event: Event }) {
           <div className="flex items-center gap-1 mt-1 text-xs text-mc-text-secondary">
             <Clock className="w-3 h-3" />
             {formatDistanceToNow(new Date(event.created_at), { addSuffix: true })}
+            {hasDetails && (
+              <ChevronRight className={`w-3 h-3 ml-auto transition-transform ${expanded ? 'rotate-90' : ''}`} />
+            )}
           </div>
         </div>
       </div>
+
+      {expanded && (
+        <div className="mt-2 ml-6 pt-2 border-t border-mc-border/50 space-y-1.5">
+          {event.type && (
+            <div className="flex items-center gap-2 text-[11px]">
+              <span className="text-mc-text-secondary">type:</span>
+              <span className="text-mc-accent font-medium">{event.type}</span>
+            </div>
+          )}
+          {event.agent_id && (
+            <div className="flex items-center gap-2 text-[11px]">
+              <span className="text-mc-text-secondary">agent:</span>
+              <span className="text-mc-text">{event.agent?.name || event.agent_id}</span>
+            </div>
+          )}
+          {event.task_id && (
+            <div className="flex items-center gap-2 text-[11px]">
+              <span className="text-mc-text-secondary">task:</span>
+              <span className="text-mc-text font-mono">{event.task?.title || event.task_id}</span>
+            </div>
+          )}
+          {meta && <MetadataDetails meta={meta} />}
+        </div>
+      )}
     </div>
   );
 }

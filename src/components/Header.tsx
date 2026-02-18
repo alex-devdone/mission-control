@@ -3,16 +3,17 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Zap, Settings, ChevronLeft, LayoutGrid } from 'lucide-react';
+import { Zap, Settings, ChevronLeft, LayoutGrid, Eye } from 'lucide-react';
 import { useMissionControl } from '@/lib/store';
 import { format } from 'date-fns';
 import type { Workspace } from '@/lib/types';
 
 interface HeaderProps {
   workspace?: Workspace;
+  pageName?: string;
 }
 
-export function Header({ workspace }: HeaderProps) {
+export function Header({ workspace, pageName }: HeaderProps) {
   const router = useRouter();
   const { agents, tasks, isOnline } = useMissionControl();
   const [currentTime, setCurrentTime] = useState(new Date());
@@ -88,13 +89,31 @@ export function Header({ workspace }: HeaderProps) {
             </Link>
           </div>
         ) : (
-          <Link
-            href="/"
-            className="flex items-center gap-2 px-3 py-1 bg-mc-bg-tertiary rounded hover:bg-mc-bg transition-colors"
-          >
-            <LayoutGrid className="w-4 h-4" />
-            <span className="text-sm hidden sm:inline">All Workspaces</span>
-          </Link>
+          <div className="flex items-center gap-2 min-w-0">
+            <Link
+              href="/"
+              className="flex items-center gap-2 px-3 py-1 bg-mc-bg-tertiary rounded hover:bg-mc-bg transition-colors"
+            >
+              <LayoutGrid className="w-4 h-4" />
+              <span className="text-sm hidden sm:inline">All Workspaces</span>
+            </Link>
+            <Link
+              href="/apps"
+              className={`flex items-center gap-1 px-2 py-1 text-xs hover:text-mc-accent hover:bg-mc-bg-tertiary rounded transition-colors ${
+                pageName === 'apps' ? 'text-mc-accent bg-mc-bg-tertiary' : 'text-mc-text-secondary'
+              }`}
+            >
+              📦 <span className="hidden sm:inline">Apps</span>
+            </Link>
+            <Link
+              href="/observatory"
+              className={`flex items-center gap-1 px-2 py-1 text-xs hover:text-mc-accent hover:bg-mc-bg-tertiary rounded transition-colors ${
+                pageName === 'observatory' ? 'text-mc-accent bg-mc-bg-tertiary' : 'text-mc-text-secondary'
+              }`}
+            >
+              <Eye className="w-3.5 h-3.5" /> <span className="hidden sm:inline">Observatory</span>
+            </Link>
+          </div>
         )}
       </div>
 

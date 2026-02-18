@@ -1,9 +1,11 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { X, Server, Cpu, Calendar, Activity } from 'lucide-react';
 import type { OpenClawAgentFull, LiveSession, CronJob } from '@/lib/types';
 import { LimitChip } from './LimitChip';
+import { TokenUsageChart, MiniTokenChart } from './TokenUsageChart';
+import type { SessionRecord } from './TokenUsageChart';
 
 function ModelBadge({ model }: { model: string }) {
   const m = model.toLowerCase();
@@ -21,14 +23,20 @@ function ModelBadge({ model }: { model: string }) {
   return <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-mono ${color}`}>{short}</span>;
 }
 
-function ChannelIcons({ channels }: { channels: { channel: string; accountId: string }[] }) {
-  const hasTg = channels.some(c => c.channel === 'telegram');
-  const hasDc = channels.some(c => c.channel === 'discord');
-  if (!hasTg && !hasDc) return null;
+function ChannelBadges({ channels }: { channels: { channel: string; accountId: string; botUsername?: string }[] }) {
+  if (!channels.length) return null;
   return (
-    <div className="flex gap-1 text-xs">
-      {hasTg && <span title="Telegram">📱</span>}
-      {hasDc && <span title="Discord">💬</span>}
+    <div className="flex flex-wrap gap-1 mt-1.5">
+      {channels.map((c, i) => {
+        const icon = c.channel === 'telegram' ? '📱' : c.channel === 'discord' ? '💬' : '🔗';
+        const label = c.botUsername ? `@${c.botUsername}` : c.accountId;
+        return (
+          <span key={i} className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full bg-mc-bg-tertiary text-mc-text-secondary" title={`${c.channel} (${c.accountId})`}>
+            <span>{icon}</span>
+            <span className="truncate max-w-[120px]">{label}</span>
+          </span>
+        );
+      })}
     </div>
   );
 }
@@ -96,6 +104,16 @@ function AgentDetailModal({ agent, cronJobs, sessions, onClose }: {
                         <span>{c.channel === 'telegram' ? '📱' : '💬'}</span>
                         <span className="text-mc-text">{c.channel}</span>
                         <span className="text-mc-text-secondary font-mono">({c.accountId})</span>
+                        {c.botUsername && c.channel === 'telegram' && (
+                          <a href={`https://t.me/${c.botUsername}`} target="_blank" rel="noopener noreferrer"
+                            className="text-mc-accent hover:underline font-mono"
+                            onClick={e => e.stopPropagation()}>
+                            @{c.botUsername}
+                          </a>
+                        )}
+                        {c.botUsername && c.channel === 'discord' && (
+                          <span className="text-mc-accent font-mono">@{c.botUsername}</span>
+                        )}
                       </div>
                     ))}
                   </div>
@@ -186,6 +204,8 @@ export function ObservatoryAgents() {
   const [sessions, setSessions] = useState<LiveSession[]>([]);
   const [cronJobs, setCronJobs] = useState<CronJob[]>([]);
   const [selectedAgent, setSelectedAgent] = useState<OpenClawAgentFull | null>(null);
+  const [sessionRecords, setSessionRecords] = useState<SessionRecord[]>([]);
+  const [days, setDays] = useState(7);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -193,13 +213,25 @@ export function ObservatoryAgents() {
       fetch('/api/openclaw/agents-full').then(r => r.json()),
       fetch('/api/openclaw/sessions-live').then(r => r.json()).catch(() => ({ sessions: [] })),
       fetch('/api/openclaw/cron').then(r => r.json()).catch(() => ({ jobs: [] })),
-    ]).then(([agentData, sessionData, cronData]) => {
+      fetch(`/api/sessions/tokens?days=${days}&raw=1`).then(r => r.json()).catch(() => []),
+    ]).then(([agentData, sessionData, cronData, rawSessions]) => {
       setAgents(agentData.agents || []);
       setSessions(sessionData.sessions || []);
       setCronJobs(cronData.jobs || []);
+      if (Array.isArray(rawSessions)) setSessionRecords(rawSessions);
       setLoading(false);
     }).catch(() => setLoading(false));
-  }, []);
+  }, [days]);
+
+  // Group raw session records by agent_id
+  const agentSessionMap = useMemo(() => {
+    const map = new Map<string, SessionRecord[]>();
+    for (const s of sessionRecords) {
+      if (!map.has(s.agent_id)) map.set(s.agent_id, []);
+      map.get(s.agent_id)!.push(s);
+    }
+    return map;
+  }, [sessionRecords]);
 
   const activeAgentIds = new Set(sessions.map(s => {
     const parts = s.key.split(':');
@@ -210,8 +242,26 @@ export function ObservatoryAgents() {
     return <div className="flex items-center justify-center py-12 text-mc-text-secondary">Loading agents...</div>;
   }
 
+  const DAY_OPTIONS = [1, 2, 7] as const;
+
   return (
     <>
+      <div className="flex items-center justify-end gap-1 mb-3">
+        {DAY_OPTIONS.map(d => (
+          <button
+            key={d}
+            onClick={() => setDays(d)}
+            className={`px-2.5 py-1 rounded text-xs font-medium transition-colors ${
+              days === d
+                ? 'bg-mc-accent/20 text-mc-accent border border-mc-accent/40'
+                : 'text-mc-text-secondary hover:text-mc-text hover:bg-mc-bg-tertiary border border-transparent'
+            }`}
+          >
+            {d}d
+          </button>
+        ))}
+      </div>
+      <TokenUsageChart days={days} />
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
         {agents.map(agent => {
           const isActive = activeAgentIds.has(agent.id);
@@ -233,8 +283,9 @@ export function ObservatoryAgents() {
               <div className="flex items-center gap-2 mt-2">
                 <ModelBadge model={agent.model.primary} />
                 <LimitChip model={agent.model.primary} />
-                <ChannelIcons channels={agent.channels} />
               </div>
+              <ChannelBadges channels={agent.channels} />
+              <MiniTokenChart sessions={agentSessionMap.get(agent.id) || []} days={days} />
             </button>
           );
         })}

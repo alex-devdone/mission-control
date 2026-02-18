@@ -358,7 +358,7 @@ export interface OpenClawAgentFull {
   name: string;
   workspace: string;
   model: { primary: string; fallbacks?: string[] };
-  channels: { channel: string; accountId: string }[];
+  channels: { channel: string; accountId: string; botUsername?: string }[];
   subagents?: { allowAgents: string[] };
 }
 

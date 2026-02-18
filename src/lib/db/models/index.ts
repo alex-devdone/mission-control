@@ -13,3 +13,4 @@ export { Conversation } from './Conversation';
 export { ConversationParticipant } from './ConversationParticipant';
 export { Message } from './Message';
 export { Business } from './Business';
+export { SessionToken } from './SessionToken';

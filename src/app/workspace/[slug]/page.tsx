@@ -160,6 +160,17 @@ export default function WorkspacePage() {
     pollLimits();
     const limitsPoll = setInterval(pollLimits, 5 * 60 * 1000);
 
+    // Poll session token usage every 5 minutes + once on load
+    const pollSessionTokens = async () => {
+      try {
+        await fetch('/api/sessions/tokens', { method: 'POST' });
+      } catch (error) {
+        console.error('Failed to poll session tokens:', error);
+      }
+    };
+    pollSessionTokens();
+    const tokensPoll = setInterval(pollSessionTokens, 5 * 60 * 1000);
+
     const connectionCheck = setInterval(async () => {
       try {
         const res = await fetch('/api/openclaw/status');
@@ -177,6 +188,7 @@ export default function WorkspacePage() {
       clearInterval(connectionCheck);
       clearInterval(taskPoll);
       clearInterval(limitsPoll);
+      clearInterval(tokensPoll);
     };
   }, [workspace, setAgents, setTasks, setEvents, setIsOnline, setIsLoading]);
 

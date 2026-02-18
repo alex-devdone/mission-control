@@ -1,16 +1,41 @@
 'use client';
 
-import { useState } from 'react';
-import { Eye, Users, Calendar, Cpu } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { Users, Calendar, Cpu } from 'lucide-react';
+import { Header } from '@/components/Header';
 import { ObservatoryAgents } from '@/components/ObservatoryAgents';
 import { SchedulerView } from '@/components/SchedulerView';
 import { ModelsOverview } from '@/components/ModelsOverview';
 import { MobileBottomNav } from '@/components/MobileBottomNav';
+import { useMissionControl } from '@/lib/store';
 
 type Tab = 'agents' | 'schedulers' | 'models';
 
 export default function ObservatoryPage() {
   const [tab, setTab] = useState<Tab>('agents');
+  const { setIsOnline } = useMissionControl();
+
+  // Check OpenClaw connection status
+  useEffect(() => {
+    async function checkOpenClaw() {
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 5000);
+        const res = await fetch('/api/openclaw/status', { signal: controller.signal });
+        clearTimeout(timeoutId);
+        if (res.ok) {
+          const status = await res.json();
+          setIsOnline(status.connected);
+        }
+      } catch {
+        setIsOnline(false);
+      }
+    }
+
+    checkOpenClaw();
+    const interval = setInterval(checkOpenClaw, 30000);
+    return () => clearInterval(interval);
+  }, [setIsOnline]);
 
   const tabs = [
     { id: 'agents' as const, label: 'Agents', icon: Users },
@@ -20,13 +45,7 @@ export default function ObservatoryPage() {
 
   return (
     <div className="min-h-screen bg-mc-bg text-mc-text">
-      <header className="border-b border-mc-border bg-mc-bg-secondary px-4 py-3">
-        <div className="flex items-center gap-3">
-          <Eye className="w-5 h-5 text-mc-accent" />
-          <h1 className="text-lg font-semibold">Observatory</h1>
-          <span className="text-xs text-mc-text-secondary">OpenClaw Agent Dashboard</span>
-        </div>
-      </header>
+      <Header pageName="observatory" />
 
       <div className="border-b border-mc-border bg-mc-bg-secondary px-4">
         <div className="flex gap-1">

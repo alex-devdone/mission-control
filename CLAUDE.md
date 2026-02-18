@@ -90,6 +90,13 @@ OPENCLAW_GATEWAY_TOKEN=<token>
 PORT=17789
 ```
 
+## Deployment
+
+After every code change, always redeploy:
+```bash
+npm run build && pm2 restart mission-control
+```
+
 ## Conventions
 
 - ESLint extends `next/core-web-vitals` and `next/typescript` (unused vars and `any` warnings are off)

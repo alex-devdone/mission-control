@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { SkipBack, SkipForward, Play, Pause } from 'lucide-react';
 import { useMissionControl } from '@/lib/store';
+import { LimitChip } from '@/components/LimitChip';
 import type { Agent } from '@/lib/types';
 
 // --- Snapshot types ---
@@ -130,12 +131,10 @@ function PixelCharacter({ agent, isWorking }: { agent: Agent; isWorking: boolean
       <span className="text-[10px] text-amber-300 font-mono font-bold tracking-wider uppercase">
         {agent.name}
       </span>
-      {/* Model */}
+      {/* Model + Limits */}
       {agent.model && agent.model !== 'unknown' && (
-        <span className="text-[8px] text-[#6a6a8a] font-mono">{agent.model}</span>
+        <LimitChip model={agent.model} fallback5h={agent.limit_5h} fallbackWeek={agent.limit_week} />
       )}
-      {/* HP Bar */}
-      <PixelHealthBar percentage={agent.limit_5h ?? 100} weekPercentage={agent.limit_week !== 100 ? agent.limit_week : null} />
     </div>
   );
 }

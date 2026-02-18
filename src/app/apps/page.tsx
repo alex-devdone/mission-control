@@ -1,6 +1,8 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { Header } from '@/components/Header';
+import { useMissionControl } from '@/lib/store';
 import type { App } from '@/lib/types';
 
 const statusColors: Record<string, string> = {
@@ -38,6 +40,28 @@ export default function AppsPage() {
   const [loading, setLoading] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
   const [form, setForm] = useState({ name: '', path: '', port: '', description: '' });
+  const { setIsOnline } = useMissionControl();
+
+  // Check OpenClaw connection status
+  useEffect(() => {
+    async function checkOpenClaw() {
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 5000);
+        const res = await fetch('/api/openclaw/status', { signal: controller.signal });
+        clearTimeout(timeoutId);
+        if (res.ok) {
+          const status = await res.json();
+          setIsOnline(status.connected);
+        }
+      } catch {
+        setIsOnline(false);
+      }
+    }
+    checkOpenClaw();
+    const interval = setInterval(checkOpenClaw, 30000);
+    return () => clearInterval(interval);
+  }, [setIsOnline]);
 
   const fetchApps = async () => {
     try {
@@ -84,9 +108,10 @@ export default function AppsPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 p-6 dark:bg-gray-950">
-      <div className="mx-auto max-w-6xl">
-        {/* Header */}
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-950">
+      <Header pageName="apps" />
+      <div className="mx-auto max-w-6xl p-6">
+        {/* Page Title */}
         <div className="mb-6 flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Apps</h1>
