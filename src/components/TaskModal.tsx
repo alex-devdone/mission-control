@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { X, Save, Trash2, Activity, Package, Bot, ClipboardList, Plus } from 'lucide-react';
+import { X, Save, Trash2, Activity, Package, Bot, ClipboardList, Plus, Clock } from 'lucide-react';
 import { useMissionControl } from '@/lib/store';
 import { ActivityLog } from './ActivityLog';
 import { DeliverablesList } from './DeliverablesList';
@@ -11,6 +11,31 @@ import { AgentModal } from './AgentModal';
 import type { Task, TaskPriority, TaskStatus } from '@/lib/types';
 
 type TabType = 'overview' | 'planning' | 'activity' | 'deliverables' | 'sessions';
+
+function formatDuration(dateString: string): string {
+  const date = new Date(dateString);
+  const now = new Date();
+  const diffMs = now.getTime() - date.getTime();
+  
+  if (diffMs < 0) return '< 1m';
+  
+  const diffSecs = Math.floor(diffMs / 1000);
+  const diffMins = Math.floor(diffSecs / 60);
+  const diffHours = Math.floor(diffMins / 60);
+  const diffDays = Math.floor(diffHours / 24);
+  
+  if (diffMins < 1) return '< 1m';
+  if (diffMins < 60) return `${diffMins}m`;
+  if (diffHours < 24) {
+    const hours = diffHours;
+    const mins = diffMins % 60;
+    return mins > 0 ? `${hours}h ${mins}m` : `${hours}h`;
+  }
+  
+  const days = diffDays;
+  const hours = diffHours % 24;
+  return hours > 0 ? `${days}d ${hours}h` : `${days}d`;
+}
 
 interface TaskModalProps {
   task?: Task;
@@ -157,9 +182,22 @@ export function TaskModal({ task, onClose, workspaceId }: TaskModalProps) {
       <div className="bg-mc-bg-secondary border-0 md:border border-mc-border rounded-none md:rounded-lg w-full max-w-full md:max-w-2xl h-full md:h-auto md:max-h-[90vh] flex flex-col">
         {/* Header */}
         <div className="flex items-center justify-between p-3 md:p-4 border-b border-mc-border flex-shrink-0">
-          <h2 className="text-base md:text-lg font-semibold line-clamp-1">
-            {task ? task.title : 'Create New Task'}
-          </h2>
+          <div className="flex-1 min-w-0">
+            <h2 className="text-base md:text-lg font-semibold line-clamp-1">
+              {task ? task.title : 'Create New Task'}
+            </h2>
+            {task && (
+              <div className="flex items-center gap-3 mt-1 text-xs text-mc-text-secondary">
+                <span className="flex items-center gap-1">
+                  <Clock className="w-3 h-3" />
+                  Created: {formatDuration(task.created_at)} ago
+                </span>
+                <span className="flex items-center gap-1">
+                  In {task.status}: {formatDuration(task.updated_at)} ago
+                </span>
+              </div>
+            )}
+          </div>
           <button
             onClick={onClose}
             className="p-1 hover:bg-mc-bg-tertiary rounded flex-shrink-0"
