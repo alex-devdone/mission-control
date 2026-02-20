@@ -67,7 +67,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     const reply = result?.reply;
     if (reply && conversation_id) {
       // Clean up reply - remove NO_REPLY, reply tags, etc
-      let cleanReply = reply
+      const cleanReply = reply
         .replace(/\[\[reply_to[^\]]*\]\]/g, '')
         .replace(/^NO_REPLY$/m, '')
         .trim();

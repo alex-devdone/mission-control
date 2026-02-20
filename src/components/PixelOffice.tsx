@@ -169,6 +169,25 @@ function IdleAgent({ agent }: { agent: Agent }) {
   );
 }
 
+// Team grouping helper
+function getTeam(agent: Agent): string {
+  const role = agent.role.toLowerCase();
+  
+  if (role.includes('developer') || role.includes('dev')) return 'Dev Team';
+  if (role.includes('qa') || role.includes('design')) return 'QA & Design';
+  if (role.includes('lead') || role.includes('research')) return 'Leadership';
+  if (role.includes('devops')) return 'Ops';
+  return 'Personal Assistants';
+}
+
+const TEAM_EMOJI: Record<string, string> = {
+  'Dev Team': '🏗️',
+  'QA & Design': '🧪',
+  'Leadership': '👑',
+  'Ops': '⚙️',
+  'Personal Assistants': '💼',
+};
+
 // --- Time Travel Timeline ---
 function parseSnapshotTime(raw: string): Date {
   // Handle both ISO strings (2026-02-14T12:30:00.123Z) and SQLite datetime (2026-02-14 12:30:00)
@@ -287,7 +306,27 @@ function OfficeScene({
   onTaskClick?: (taskId: string) => void;
   dimmed?: boolean;
 }) {
-  const benchWidth = Math.max(160, idleAgents.length * 70);
+  // Group all agents by team
+  const allAgents = [...workingAgents, ...idleAgents];
+  const teamMap = new Map<string, { working: Agent[]; idle: Agent[] }>();
+  
+  allAgents.forEach((agent) => {
+    const team = getTeam(agent);
+    if (!teamMap.has(team)) {
+      teamMap.set(team, { working: [], idle: [] });
+    }
+    
+    const isWorking = workingAgents.some(a => a.id === agent.id);
+    if (isWorking) {
+      teamMap.get(team)!.working.push(agent);
+    } else {
+      teamMap.get(team)!.idle.push(agent);
+    }
+  });
+
+  // Teams in order
+  const TEAM_ORDER = ['Dev Team', 'QA & Design', 'Leadership', 'Ops', 'Personal Assistants'];
+  const teams = TEAM_ORDER.filter(t => teamMap.has(t));
 
   return (
     <div
@@ -300,61 +339,77 @@ function OfficeScene({
         backgroundPosition: '0 0, 0 10px, 10px -10px, -10px 0px',
       }}
     >
-      {/* Working Section */}
-      <div className="mb-8">
-        <div className="flex items-center gap-2 mb-6">
-          <div className={`w-2.5 h-2.5 rounded-full ${dimmed ? 'bg-purple-400' : 'bg-green-400 animate-pulse'}`} />
-          <span className="text-amber-400 font-mono font-bold text-sm uppercase tracking-widest">
-            Working
-          </span>
-          <span className="text-[#4a4a5a] font-mono text-xs ml-2">
-            ({workingAgents.length})
-          </span>
+      {teams.length === 0 ? (
+        <div className="text-center py-16 text-[#4a4a5a] font-mono text-xs">
+          No agents available
         </div>
+      ) : (
+        <div>
+          {teams.map((teamName, idx) => {
+            const teamData = teamMap.get(teamName)!;
+            const teamCount = teamData.working.length + teamData.idle.length;
+            const benchWidth = Math.max(160, teamData.idle.length * 70);
 
-        {workingAgents.length === 0 ? (
-          <div className="text-center py-8 text-[#4a4a5a] font-mono text-xs">
-            No agents currently working
-          </div>
-        ) : (
-          <div className="flex flex-wrap gap-10 justify-center">
-            {workingAgents.map((agent) => (
-              <WorkingAgent key={agent.id} agent={agent} taskInfo={getTaskInfo(agent.id)} onTaskClick={onTaskClick} />
-            ))}
-          </div>
-        )}
-      </div>
+            return (
+              <div key={teamName}>
+                {/* Team Header */}
+                <div className="flex items-center gap-2 mb-4">
+                  <span className="text-xs font-mono text-amber-400/70 uppercase tracking-widest">
+                    {TEAM_EMOJI[teamName]} {teamName}
+                  </span>
+                  <span className="text-[#4a4a5a] font-mono text-xs ml-2">
+                    ({teamCount})
+                  </span>
+                </div>
 
-      {/* Divider */}
-      <div className="border-t border-[#2a2a3a] my-6" />
+                {/* Team Content */}
+                <div className="mb-6 pl-4">
+                  {/* Working agents */}
+                  {teamData.working.length > 0 && (
+                    <div className="mb-4">
+                      <span className="text-[10px] text-amber-300 font-mono opacity-70 uppercase tracking-wider block mb-3">
+                        Working
+                      </span>
+                      <div className="flex flex-wrap gap-8 justify-start">
+                        {teamData.working.map((agent) => (
+                          <WorkingAgent 
+                            key={agent.id} 
+                            agent={agent} 
+                            taskInfo={getTaskInfo(agent.id)} 
+                            onTaskClick={onTaskClick} 
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  )}
 
-      {/* On Break Section */}
-      <div>
-        <div className="flex items-center gap-2 mb-6">
-          <div className="w-2.5 h-2.5 rounded-full bg-amber-400" />
-          <span className="text-amber-400 font-mono font-bold text-sm uppercase tracking-widest">
-            On Break
-          </span>
-          <span className="text-[#4a4a5a] font-mono text-xs ml-2">
-            ({idleAgents.length})
-          </span>
+                  {/* Idle agents */}
+                  {teamData.idle.length > 0 && (
+                    <div>
+                      <span className="text-[10px] text-amber-300 font-mono opacity-70 uppercase tracking-wider block mb-3">
+                        On Break
+                      </span>
+                      <div className="flex flex-col items-start gap-2">
+                        <div className="flex flex-wrap gap-6 justify-start">
+                          {teamData.idle.map((agent) => (
+                            <IdleAgent key={agent.id} agent={agent} />
+                          ))}
+                        </div>
+                        <PixelBench width={benchWidth} />
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Divider between teams */}
+                {idx < teams.length - 1 && (
+                  <div className="border-t border-[#2a2a3a]/50 my-4" />
+                )}
+              </div>
+            );
+          })}
         </div>
-
-        {idleAgents.length === 0 ? (
-          <div className="text-center py-8 text-[#4a4a5a] font-mono text-xs">
-            Everyone&apos;s working!
-          </div>
-        ) : (
-          <div className="flex flex-col items-center gap-2">
-            <div className="flex flex-wrap gap-8 justify-center">
-              {idleAgents.map((agent) => (
-                <IdleAgent key={agent.id} agent={agent} />
-              ))}
-            </div>
-            <PixelBench width={benchWidth} />
-          </div>
-        )}
-      </div>
+      )}
     </div>
   );
 }
