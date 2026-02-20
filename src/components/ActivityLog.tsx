@@ -51,6 +51,22 @@ export function ActivityLog({ taskId }: ActivityLogProps) {
     }
   };
 
+  const getActivityBorderColor = (type: string) => {
+    switch (type) {
+      case 'spawned':
+      case 'updated':
+        return 'border-l-2 border-blue-500';
+      case 'completed':
+        return 'border-l-2 border-green-500';
+      case 'file_created':
+        return 'border-l-2 border-cyan-500';
+      case 'status_changed':
+        return 'border-l-2 border-yellow-500';
+      default:
+        return 'border-l-2 border-gray-500';
+    }
+  };
+
   const formatTimestamp = (timestamp: string) => {
     const date = new Date(timestamp);
     const now = new Date();
@@ -136,7 +152,7 @@ export function ActivityLog({ taskId }: ActivityLogProps) {
       {activities.map((activity) => (
         <div
           key={activity.id}
-          className="flex gap-3 p-3 bg-mc-bg rounded-lg border border-mc-border"
+          className={`flex gap-3 p-3 bg-mc-bg rounded-lg border border-mc-border ${getActivityBorderColor(activity.activity_type)}`}
         >
           {/* Icon */}
           <div className="text-2xl flex-shrink-0">
