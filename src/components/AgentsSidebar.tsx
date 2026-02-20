@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Plus, ChevronRight, Zap, ZapOff, Loader2, X, Users, MessageSquare } from 'lucide-react';
+import { Plus, ChevronRight, Zap, ZapOff, Loader2, X, Users, MessageSquare, BellRing } from 'lucide-react';
 import { useMissionControl } from '@/lib/store';
 import type { Agent, AgentStatus, OpenClawSession } from '@/lib/types';
 import { AgentModal } from './AgentModal';
@@ -180,6 +180,19 @@ export function AgentsSidebar({ workspaceId, isMobileOpen, onMobileClose }: Agen
       console.error('OpenClaw connection error:', error);
     } finally {
       setConnectingAgentId(null);
+    }
+  };
+
+  const pingAgent = async (agent: Agent, e: React.MouseEvent) => {
+    e.stopPropagation();
+    try {
+      await fetch(`/api/agents/${agent.id}/ping`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ context: 'sidebar ping' }),
+      });
+    } catch (error) {
+      console.error(`Failed to ping ${agent.name}:`, error);
     }
   };
 
@@ -379,14 +392,21 @@ export function AgentsSidebar({ workspaceId, isMobileOpen, onMobileClose }: Agen
                 </div>
               )}
 
-              {/* Chat button — any agent with an openclaw_agent_id can chat */}
-              <div className="px-2 pb-2">
+              {/* Chat + Ping buttons */}
+              <div className="px-2 pb-2 grid grid-cols-2 gap-1.5">
                 <button
                   onClick={(e) => { e.stopPropagation(); setChatAgent(agent); }}
-                  className="w-full flex items-center justify-center gap-2 px-2 py-1 rounded text-xs bg-mc-accent-cyan/20 text-mc-accent-cyan hover:bg-mc-accent-cyan/30 transition-colors"
+                  className="w-full flex items-center justify-center gap-1.5 px-2 py-1 rounded text-xs bg-mc-accent-cyan/20 text-mc-accent-cyan hover:bg-mc-accent-cyan/30 transition-colors"
                 >
                   <MessageSquare className="w-3 h-3" />
                   <span>Chat</span>
+                </button>
+                <button
+                  onClick={(e) => pingAgent(agent, e)}
+                  className="w-full flex items-center justify-center gap-1.5 px-2 py-1 rounded text-xs bg-mc-accent-yellow/20 text-mc-accent-yellow hover:bg-mc-accent-yellow/30 transition-colors"
+                >
+                  <BellRing className="w-3 h-3" />
+                  <span>Ping</span>
                 </button>
               </div>
             </div>

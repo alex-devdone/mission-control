@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
-import { ChevronLeft, LayoutGrid, Monitor, Users, Radio, Clock } from 'lucide-react';
+import { ChevronLeft, LayoutGrid, Monitor, Users, Radio, Clock, MessagesSquare } from 'lucide-react';
 import { Header } from '@/components/Header';
 import { AgentsSidebar } from '@/components/AgentsSidebar';
 import { MissionQueue } from '@/components/MissionQueue';
@@ -11,6 +11,7 @@ import { LiveFeed } from '@/components/LiveFeed';
 import { SSEDebugPanel } from '@/components/SSEDebugPanel';
 import { PixelOffice } from '@/components/PixelOffice';
 import { SchedulerView } from '@/components/SchedulerView';
+import { GroupChat } from '@/components/GroupChat';
 import { useMissionControl } from '@/lib/store';
 import { useSSE } from '@/hooks/useSSE';
 import { debug } from '@/lib/debug';
@@ -31,7 +32,7 @@ export default function WorkspacePage() {
 
   const [workspace, setWorkspace] = useState<Workspace | null>(null);
   const [notFound, setNotFound] = useState(false);
-  const [view, setView] = useState<'kanban' | 'pixel' | 'schedulers'>('kanban');
+  const [view, setView] = useState<'kanban' | 'pixel' | 'schedulers' | 'team-chat'>('kanban');
   const [agentsOpen, setAgentsOpen] = useState(false);
   const [feedOpen, setFeedOpen] = useState(false);
 
@@ -275,6 +276,18 @@ export default function WorkspacePage() {
             <span className="hidden sm:inline">Schedulers</span>
             <span className="sm:hidden">Cron</span>
           </button>
+          <button
+            onClick={() => setView('team-chat')}
+            className={`flex items-center gap-1.5 px-3 py-1 rounded text-xs font-medium transition-colors ${
+              view === 'team-chat'
+                ? 'bg-mc-accent-cyan/20 text-mc-accent-cyan border border-mc-accent-cyan/40'
+                : 'text-mc-text-secondary hover:text-mc-text hover:bg-mc-bg-tertiary'
+            }`}
+          >
+            <MessagesSquare className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">Team Chat</span>
+            <span className="sm:hidden">Chat</span>
+          </button>
         </div>
 
         {/* Mobile: Feed toggle */}
@@ -297,6 +310,8 @@ export default function WorkspacePage() {
           <MissionQueue workspaceId={workspace.id} />
         ) : view === 'pixel' ? (
           <PixelOffice workspaceId={workspace.id} />
+        ) : view === 'team-chat' ? (
+          <GroupChat />
         ) : (
           <SchedulerView />
         )}

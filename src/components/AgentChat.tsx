@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { X, Send, Loader2, MessageSquare, RefreshCw } from 'lucide-react';
+import { X, Send, Loader2, MessageSquare, RefreshCw, BellRing } from 'lucide-react';
 import type { Agent } from '@/lib/types';
 
 interface ChatMessage {
@@ -76,6 +76,24 @@ export function AgentChat({ agent, onClose }: AgentChatProps) {
     inputRef.current?.focus();
   }, []);
 
+  const pingAgent = async () => {
+    try {
+      const res = await fetch(`/api/agents/${agent.id}/ping`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ context: 'agent chat' }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setError(data.error || 'Failed to ping agent');
+      } else {
+        setError(null);
+      }
+    } catch {
+      setError('Failed to ping agent');
+    }
+  };
+
   const sendMessage = async () => {
     if (!input.trim() || sending) return;
 
@@ -125,6 +143,9 @@ export function AgentChat({ agent, onClose }: AgentChatProps) {
             </div>
           </div>
           <div className="flex items-center gap-1">
+            <button onClick={pingAgent} className="p-1 hover:bg-mc-bg-tertiary rounded" title="Ping for status">
+              <BellRing className="w-4 h-4 text-mc-accent-yellow" />
+            </button>
             <button onClick={loadHistory} className="p-1 hover:bg-mc-bg-tertiary rounded" title="Refresh">
               <RefreshCw className="w-4 h-4 text-mc-text-secondary" />
             </button>
