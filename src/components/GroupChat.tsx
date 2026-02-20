@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { Send, Users, BellRing } from 'lucide-react';
+import { Send, Users, BellRing, Hash, ChevronLeft, UserCircle } from 'lucide-react';
 import type { Conversation, Message } from '@/lib/types';
 
 export function GroupChat() {
@@ -11,6 +11,7 @@ export function GroupChat() {
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
+  const [mobileView, setMobileView] = useState<'channels' | 'chat' | 'participants'>('channels');
 
   const activeConversation = useMemo(
     () => conversations.find((c) => c.id === activeId) || null,
@@ -83,59 +84,160 @@ export function GroupChat() {
     }
   };
 
+  const selectChannel = (id: string) => {
+    setActiveId(id);
+    setMobileView('chat');
+  };
+
+  // --- Channel List ---
+  const channelList = (
+    <div className="space-y-1">
+      <div className="text-xs uppercase text-mc-text-secondary mb-2 px-1">Team Channels</div>
+      {conversations.map((c) => (
+        <button
+          key={c.id}
+          onClick={() => selectChannel(c.id)}
+          className={`w-full text-left px-2 py-2.5 rounded text-sm transition-colors flex items-center gap-2 ${
+            activeId === c.id ? 'bg-mc-accent/20 text-mc-accent' : 'hover:bg-mc-bg-tertiary text-mc-text'
+          }`}
+        >
+          <Hash className="w-4 h-4 shrink-0" />
+          {c.title || 'Untitled'}
+        </button>
+      ))}
+    </div>
+  );
+
+  // --- Messages ---
+  const messageList = (
+    <div className="flex-1 overflow-y-auto p-3 md:p-4 space-y-2.5">
+      {messages.map((m) => (
+        <div key={m.id} className="bg-mc-bg rounded border border-mc-border p-2">
+          <div className="text-xs text-mc-text-secondary mb-1 flex items-center justify-between gap-2">
+            <span className="truncate">
+              {m.sender ? `${m.sender.avatar_emoji} ${m.sender.name}` : 'System'} · {new Date(m.created_at).toLocaleTimeString()}
+            </span>
+            {m.sender && (
+              <button
+                onClick={() => pingAgent(m.sender!.id)}
+                className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-mc-accent-cyan/20 text-mc-accent-cyan hover:bg-mc-accent-cyan/30 shrink-0"
+              >
+                <BellRing className="w-3 h-3" /> Ping
+              </button>
+            )}
+          </div>
+          <div className="text-sm whitespace-pre-wrap break-words">{m.content}</div>
+        </div>
+      ))}
+      {messages.length === 0 && (
+        <div className="h-full flex items-center justify-center text-mc-text-secondary text-sm">
+          <div className="text-center">
+            <Users className="w-8 h-8 mx-auto mb-2" />
+            No messages yet.
+          </div>
+        </div>
+      )}
+    </div>
+  );
+
+  // --- Participants ---
+  const participantList = (
+    <div className="space-y-2">
+      <div className="text-xs uppercase text-mc-text-secondary mb-2 px-1">Participants</div>
+      {(activeConversation?.participants || []).map((agent) => (
+        <div key={agent.id} className="flex items-center justify-between bg-mc-bg rounded border border-mc-border px-2 py-1.5">
+          <div className="text-sm truncate">{agent.avatar_emoji} {agent.name}</div>
+          <button
+            onClick={() => pingAgent(agent.id)}
+            className="text-xs px-2 py-0.5 rounded bg-mc-accent-cyan/20 text-mc-accent-cyan hover:bg-mc-accent-cyan/30 shrink-0"
+          >
+            Ping
+          </button>
+        </div>
+      ))}
+    </div>
+  );
+
+  // --- Mobile Layout ---
   return (
     <div className="flex-1 flex overflow-hidden bg-mc-bg-secondary">
-      <aside className="w-64 border-r border-mc-border p-3 overflow-y-auto">
-        <div className="text-xs uppercase text-mc-text-secondary mb-2">Team Channels</div>
-        <div className="space-y-1">
-          {conversations.map((c) => (
-            <button
-              key={c.id}
-              onClick={() => setActiveId(c.id)}
-              className={`w-full text-left px-2 py-2 rounded text-sm transition-colors ${
-                activeId === c.id ? 'bg-mc-accent/20 text-mc-accent' : 'hover:bg-mc-bg-tertiary text-mc-text'
-              }`}
-            >
-              # {c.title || 'Untitled'}
-            </button>
-          ))}
-        </div>
+      {/* Mobile: full-screen views */}
+      <div className="flex flex-col w-full md:hidden">
+        {mobileView === 'channels' && (
+          <div className="flex-1 overflow-y-auto p-3">
+            {channelList}
+          </div>
+        )}
+
+        {mobileView === 'chat' && (
+          <>
+            <div className="border-b border-mc-border px-3 py-2 flex items-center gap-2">
+              <button onClick={() => setMobileView('channels')} className="p-1 rounded hover:bg-mc-bg-tertiary">
+                <ChevronLeft className="w-5 h-5" />
+              </button>
+              <div className="font-medium text-sm flex-1 truncate">
+                {activeConversation?.title || 'Chat'}
+              </div>
+              <button
+                onClick={() => setMobileView('participants')}
+                className="p-1 rounded hover:bg-mc-bg-tertiary"
+              >
+                <UserCircle className="w-5 h-5" />
+              </button>
+              {notice && <div className="text-xs text-mc-accent-yellow">{notice}</div>}
+            </div>
+            {messageList}
+            <div className="border-t border-mc-border p-2 flex gap-2">
+              <input
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    sendMessage();
+                  }
+                }}
+                placeholder="Message..."
+                className="flex-1 bg-mc-bg border border-mc-border rounded px-3 py-2 text-sm min-w-0"
+              />
+              <button
+                onClick={sendMessage}
+                disabled={!input.trim() || sending || !activeId}
+                className="px-3 py-2 rounded bg-mc-accent text-mc-bg disabled:opacity-50 shrink-0"
+              >
+                <Send className="w-4 h-4" />
+              </button>
+            </div>
+          </>
+        )}
+
+        {mobileView === 'participants' && (
+          <>
+            <div className="border-b border-mc-border px-3 py-2 flex items-center gap-2">
+              <button onClick={() => setMobileView('chat')} className="p-1 rounded hover:bg-mc-bg-tertiary">
+                <ChevronLeft className="w-5 h-5" />
+              </button>
+              <div className="font-medium text-sm">Participants</div>
+            </div>
+            <div className="flex-1 overflow-y-auto p-3">
+              {participantList}
+            </div>
+          </>
+        )}
+      </div>
+
+      {/* Desktop: three-column layout */}
+      <aside className="hidden md:block w-64 border-r border-mc-border p-3 overflow-y-auto">
+        {channelList}
       </aside>
 
-      <div className="flex-1 flex flex-col overflow-hidden">
+      <div className="hidden md:flex flex-1 flex-col overflow-hidden">
         <div className="border-b border-mc-border px-4 py-2 flex items-center justify-between">
           <div className="font-medium">{activeConversation?.title || 'Select a team channel'}</div>
           {notice && <div className="text-xs text-mc-accent-yellow">{notice}</div>}
         </div>
 
-        <div className="flex-1 overflow-y-auto p-4 space-y-3">
-          {messages.map((m) => (
-            <div key={m.id} className="bg-mc-bg rounded border border-mc-border p-2">
-              <div className="text-xs text-mc-text-secondary mb-1 flex items-center justify-between">
-                <span>
-                  {m.sender ? `${m.sender.avatar_emoji} ${m.sender.name}` : 'System'} · {new Date(m.created_at).toLocaleTimeString()}
-                </span>
-                {m.sender && (
-                  <button
-                    onClick={() => pingAgent(m.sender!.id)}
-                    className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-mc-accent-cyan/20 text-mc-accent-cyan hover:bg-mc-accent-cyan/30"
-                  >
-                    <BellRing className="w-3 h-3" /> Ping
-                  </button>
-                )}
-              </div>
-              <div className="text-sm whitespace-pre-wrap break-words">{m.content}</div>
-            </div>
-          ))}
-          {messages.length === 0 && (
-            <div className="h-full flex items-center justify-center text-mc-text-secondary text-sm">
-              <div className="text-center">
-                <Users className="w-8 h-8 mx-auto mb-2" />
-                No messages yet.
-              </div>
-            </div>
-          )}
-        </div>
+        {messageList}
 
         <div className="border-t border-mc-border p-3 flex gap-2">
           <input
@@ -160,21 +262,8 @@ export function GroupChat() {
         </div>
       </div>
 
-      <aside className="w-72 border-l border-mc-border p-3 overflow-y-auto hidden lg:block">
-        <div className="text-xs uppercase text-mc-text-secondary mb-2">Participants</div>
-        <div className="space-y-2">
-          {(activeConversation?.participants || []).map((agent) => (
-            <div key={agent.id} className="flex items-center justify-between bg-mc-bg rounded border border-mc-border px-2 py-1.5">
-              <div className="text-sm truncate">{agent.avatar_emoji} {agent.name}</div>
-              <button
-                onClick={() => pingAgent(agent.id)}
-                className="text-xs px-2 py-0.5 rounded bg-mc-accent-cyan/20 text-mc-accent-cyan hover:bg-mc-accent-cyan/30"
-              >
-                Ping
-              </button>
-            </div>
-          ))}
-        </div>
+      <aside className="hidden lg:block w-72 border-l border-mc-border p-3 overflow-y-auto">
+        {participantList}
       </aside>
     </div>
   );
