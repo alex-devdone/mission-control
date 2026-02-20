@@ -139,15 +139,23 @@ function PixelCharacter({ agent, isWorking }: { agent: Agent; isWorking: boolean
   );
 }
 
-function WorkingAgent({ agent, taskTitle }: { agent: Agent; taskTitle?: string }) {
+function WorkingAgent({ agent, taskInfo, onTaskClick }: { agent: Agent; taskInfo?: { id: string; title: string; appName?: string }; onTaskClick?: (taskId: string) => void }) {
   return (
     <div className="flex flex-col items-center gap-2">
       <PixelCharacter agent={agent} isWorking={true} />
       <PixelDesk />
-      {taskTitle && (
-        <div className="max-w-[120px] mt-1 px-2 py-1 bg-[#1a1a2e]/80 border border-[#3a3a4a] rounded text-[8px] text-mc-text-secondary text-center truncate">
-          {taskTitle}
+      {taskInfo?.appName && (
+        <div className="px-1.5 py-0.5 bg-[#1a2a3a]/80 border border-[#2a4a6a] rounded text-[7px] text-mc-accent font-mono">
+          📦 {taskInfo.appName}
         </div>
+      )}
+      {taskInfo && (
+        <button
+          onClick={() => onTaskClick?.(taskInfo.id)}
+          className="max-w-[120px] mt-1 px-2 py-1 bg-[#1a1a2e]/80 border border-[#3a3a4a] rounded text-[8px] text-mc-text-secondary text-center truncate hover:border-mc-accent hover:text-mc-text transition-colors cursor-pointer"
+        >
+          {taskInfo.title}
+        </button>
       )}
     </div>
   );
@@ -269,12 +277,14 @@ function TimeTravelBar({
 function OfficeScene({
   workingAgents,
   idleAgents,
-  getTaskTitle,
+  getTaskInfo,
+  onTaskClick,
   dimmed,
 }: {
   workingAgents: Agent[];
   idleAgents: Agent[];
-  getTaskTitle: (agentId: string) => string | undefined;
+  getTaskInfo: (agentId: string) => { id: string; title: string; appName?: string } | undefined;
+  onTaskClick?: (taskId: string) => void;
   dimmed?: boolean;
 }) {
   const benchWidth = Math.max(160, idleAgents.length * 70);
@@ -309,7 +319,7 @@ function OfficeScene({
         ) : (
           <div className="flex flex-wrap gap-10 justify-center">
             {workingAgents.map((agent) => (
-              <WorkingAgent key={agent.id} agent={agent} taskTitle={getTaskTitle(agent.id)} />
+              <WorkingAgent key={agent.id} agent={agent} taskInfo={getTaskInfo(agent.id)} onTaskClick={onTaskClick} />
             ))}
           </div>
         )}
@@ -355,7 +365,7 @@ interface PixelOfficeProps {
 }
 
 export function PixelOffice({ workspaceId }: PixelOfficeProps) {
-  const { agents, tasks } = useMissionControl();
+  const { agents, tasks, setSelectedTask } = useMissionControl();
 
   // OpenClaw agents (all 16)
   const [openclawAgents, setOpenclawAgents] = useState<{ id: string; name: string; model: { primary: string }; channels: { channel: string }[] }[]>([]);
@@ -442,16 +452,13 @@ export function PixelOffice({ workspaceId }: PixelOfficeProps) {
   // Determine what to render
   let displayWorking: Agent[];
   let displayIdle: Agent[];
-  let getTaskTitle: (agentId: string) => string | undefined;
+  let getTaskInfo: (agentId: string) => { id: string; title: string; appName?: string } | undefined;
 
   if (isLive) {
     // Live mode — merge MC agents with OpenClaw agents
     const mcAgentIds = new Set(agents.map(a => a.id));
-    const activeAgentIds = new Set(
-      liveSessions
-        .filter(s => Date.now() - s.updatedAt < 300000) // active in last 5 min
-        .map(s => s.key.split(':')[1])
-    );
+    const activeSessions = liveSessions.filter(s => Date.now() - s.updatedAt < 300000);
+    const activeAgentIds = new Set(activeSessions.map(s => s.key.split(':')[1]));
 
     // Create Agent-like objects for OpenClaw agents not already in MC
     const ocOnlyAgents: Agent[] = openclawAgents
@@ -471,11 +478,18 @@ export function PixelOffice({ workspaceId }: PixelOfficeProps) {
         updated_at: '',
       }));
 
-    // Update MC agents status based on live sessions
+    // Agents with in_progress tasks should count as working
+    const agentsWithInProgressTasks = new Set(
+      tasks
+        .filter(t => t.status === 'in_progress' && t.assigned_agent_id)
+        .map(t => t.assigned_agent_id!)
+    );
+
+    // Update MC agents status based on live sessions OR in_progress tasks
     const allAgents = [
       ...agents.map(a => {
         const ocId = (a as Agent & { openclaw_agent_id?: string }).openclaw_agent_id;
-        if (ocId && activeAgentIds.has(ocId)) {
+        if ((ocId && activeAgentIds.has(ocId)) || agentsWithInProgressTasks.has(a.id)) {
           return { ...a, status: 'working' as Agent['status'] };
         }
         return a;
@@ -485,11 +499,16 @@ export function PixelOffice({ workspaceId }: PixelOfficeProps) {
 
     displayWorking = allAgents.filter((a) => a.status === 'working');
     displayIdle = allAgents.filter((a) => a.status !== 'working');
-    getTaskTitle = (agentId: string) => {
+    getTaskInfo = (agentId: string) => {
+      // Prioritize in_progress tasks, then fall back to any active task
+      const inProgress = tasks.find(
+        (t) => t.assigned_agent_id === agentId && t.status === 'in_progress'
+      );
+      if (inProgress) return { id: inProgress.id, title: inProgress.title, appName: (inProgress as any).app?.name };
       const t = tasks.find(
         (t) => t.assigned_agent_id === agentId && t.status !== 'done' && t.status !== 'review'
       );
-      return t?.title;
+      return t ? { id: t.id, title: t.title, appName: (t as any).app?.name } : undefined;
     };
   } else {
     // Time travel mode - use snapshot data
@@ -498,27 +517,31 @@ export function PixelOffice({ workspaceId }: PixelOfficeProps) {
       const snapshotAgents = snapshot.agents.map(toDisplayAgent);
       displayWorking = snapshotAgents.filter((a) => a.status === 'working');
       displayIdle = snapshotAgents.filter((a) => a.status !== 'working');
-      // Build task title lookup from snapshot
-      const taskMap = new Map<string, string>();
+      // Build task info lookup from snapshot
+      const taskMap = new Map<string, { id: string; title: string }>();
       for (const sa of snapshot.agents) {
-        if (sa.task_title) taskMap.set(sa.agent_id, sa.task_title);
+        if (sa.task_title && sa.task_id) taskMap.set(sa.agent_id, { id: sa.task_id, title: sa.task_title });
       }
-      getTaskTitle = (agentId: string) => taskMap.get(agentId);
+      getTaskInfo = (agentId: string) => taskMap.get(agentId);
     } else {
       displayWorking = [];
       displayIdle = [];
-      getTaskTitle = () => undefined;
+      getTaskInfo = () => undefined;
     }
   }
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
       {/* Office area */}
-      <div className="flex-1 flex items-center justify-center p-8 overflow-auto relative">
+      <div className="flex-1 flex items-center justify-center p-8 pt-24 overflow-auto relative">
         <OfficeScene
           workingAgents={displayWorking}
           idleAgents={displayIdle}
-          getTaskTitle={getTaskTitle}
+          getTaskInfo={getTaskInfo}
+          onTaskClick={(taskId) => {
+            const task = tasks.find(t => t.id === taskId);
+            if (task) setSelectedTask(task);
+          }}
           dimmed={!isLive}
         />
 

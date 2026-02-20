@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { v4 as uuidv4 } from 'uuid';
-import { connectDb, Task, Agent, Event } from '@/lib/db';
+import { connectDb, Task, Agent, App, Event } from '@/lib/db';
 import { broadcast } from '@/lib/events';
 import type { Task as TaskType, CreateTaskRequest, Agent as AgentType } from '@/lib/types';
 
@@ -36,9 +36,15 @@ export async function GET(request: NextRequest) {
     const agents = agentIds.length > 0 ? await Agent.find({ _id: { $in: agentIds } }).lean() as any[] : [];
     const agentMap = new Map(agents.map(a => [a._id, a]));
 
+    // Fetch app info for tasks with app_id
+    const appIds = Array.from(new Set(tasks.map(t => t.app_id).filter(Boolean)));
+    const apps = appIds.length > 0 ? await App.find({ _id: { $in: appIds } }).lean() as any[] : [];
+    const appMap = new Map(apps.map(a => [a._id, a]));
+
     const transformedTasks = tasks.map((task: any) => {
       const aa = task.assigned_agent_id ? agentMap.get(task.assigned_agent_id) : null;
       const ca = task.created_by_agent_id ? agentMap.get(task.created_by_agent_id) : null;
+      const app = task.app_id ? appMap.get(task.app_id) : null;
       return {
         ...task,
         id: task._id,
@@ -46,6 +52,7 @@ export async function GET(request: NextRequest) {
         assigned_agent_emoji: aa?.avatar_emoji || undefined,
         created_by_agent_name: ca?.name || undefined,
         assigned_agent: aa ? { id: aa._id, name: aa.name, avatar_emoji: aa.avatar_emoji } : undefined,
+        app: app ? { id: app._id, name: app.name, path: app.path } : undefined,
       };
     });
 

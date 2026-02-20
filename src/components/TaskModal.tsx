@@ -189,7 +189,7 @@ export function TaskModal({ task, onClose, workspaceId }: TaskModalProps) {
         )}
 
         {/* Content Area */}
-        <div className="flex-1 overflow-y-auto p-4">
+        <div className="flex-1 overflow-y-auto min-h-0 p-4">
           {/* Overview Tab */}
           {activeTab === 'overview' && (
             <form onSubmit={handleSubmit} className="space-y-4">

@@ -82,6 +82,38 @@ export function ActivityLog({ taskId }: ActivityLogProps) {
     });
   };
 
+  const getModelBadgeStyles = (model: string) => {
+    const baseClasses = 'text-xs px-2 py-0.5 rounded-full font-mono inline-block';
+    
+    switch (model) {
+      case 'sonnet':
+      case 'claude-sonnet':
+        return `${baseClasses} bg-blue-500/20 text-blue-400`;
+      case 'haiku':
+      case 'claude-haiku':
+        return `${baseClasses} bg-green-500/20 text-green-400`;
+      case 'glm-5':
+      case 'glm-max':
+        return `${baseClasses} bg-purple-500/20 text-purple-400`;
+      case 'codex':
+        return `${baseClasses} bg-orange-500/20 text-orange-400`;
+      case 'opus':
+      case 'claude-opus':
+        return `${baseClasses} bg-pink-500/20 text-pink-400`;
+      default:
+        return `${baseClasses} bg-gray-500/20 text-gray-400`;
+    }
+  };
+
+  const parseMetadata = (metadataStr: string | undefined) => {
+    if (!metadataStr) return null;
+    try {
+      return JSON.parse(metadataStr);
+    } catch {
+      return null;
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-8">
@@ -100,7 +132,7 @@ export function ActivityLog({ taskId }: ActivityLogProps) {
   }
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-3 overflow-y-auto">
       {activities.map((activity) => (
         <div
           key={activity.id}
@@ -130,10 +162,34 @@ export function ActivityLog({ taskId }: ActivityLogProps) {
 
             {/* Metadata */}
             {activity.metadata && (
-              <div className="mt-2 p-2 bg-mc-bg-tertiary rounded text-xs text-mc-text-secondary font-mono">
-                {typeof activity.metadata === 'string' 
-                  ? (() => { try { return JSON.stringify(JSON.parse(activity.metadata), null, 2); } catch { return activity.metadata; } })()
-                  : JSON.stringify(activity.metadata, null, 2)}
+              <div className="mt-2 space-y-1">
+                {(() => {
+                  const metadata = parseMetadata(typeof activity.metadata === 'string' ? activity.metadata : JSON.stringify(activity.metadata));
+                  const model = metadata?.model;
+                  const tokens = metadata?.tokens_estimate;
+                  
+                  return (
+                    <>
+                      {model && (
+                        <div className="flex items-center gap-2">
+                          <span className={getModelBadgeStyles(model)}>
+                            {model}
+                          </span>
+                          {tokens && (
+                            <span className="text-xs text-mc-text-secondary">
+                              {tokens} tokens
+                            </span>
+                          )}
+                        </div>
+                      )}
+                      <div className="p-2 bg-mc-bg-tertiary rounded text-xs text-mc-text-secondary font-mono">
+                        {typeof activity.metadata === 'string' 
+                          ? (() => { try { return JSON.stringify(JSON.parse(activity.metadata), null, 2); } catch { return activity.metadata; } })()
+                          : JSON.stringify(activity.metadata, null, 2)}
+                      </div>
+                    </>
+                  );
+                })()}
               </div>
             )}
 
