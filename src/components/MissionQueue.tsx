@@ -21,6 +21,21 @@ const COLUMNS: { id: TaskStatus; label: string; color: string }[] = [
   { id: 'done', label: 'DONE', color: 'border-t-mc-accent-green' },
 ];
 
+function timeAgo(dateString: string): string {
+  const date = new Date(dateString);
+  const now = new Date();
+  const diffMs = now.getTime() - date.getTime();
+  
+  const diffMins = Math.floor(diffMs / 60000);
+  const diffHours = Math.floor(diffMs / 3600000);
+  const diffDays = Math.floor(diffMs / 86400000);
+  
+  if (diffMins < 1) return 'just now';
+  if (diffMins < 60) return `${diffMins}m ago`;
+  if (diffHours < 24) return `${diffHours}h ago`;
+  return `${diffDays}d ago`;
+}
+
 export function MissionQueue({ workspaceId }: MissionQueueProps) {
   const { tasks, updateTaskStatus, addEvent } = useMissionControl();
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -199,10 +214,15 @@ function TaskCard({ task, onDragStart, onClick, isDragging }: TaskCardProps) {
 
         {/* Assigned agent */}
         {task.assigned_agent && (
-          <div className="flex items-center gap-2 mb-3 py-1.5 px-2 bg-mc-bg-tertiary/50 rounded">
-            <span className="text-base">{(task.assigned_agent as unknown as { avatar_emoji: string }).avatar_emoji}</span>
-            <span className="text-xs text-mc-text-secondary truncate">
-              {(task.assigned_agent as unknown as { name: string }).name}
+          <div className="flex flex-col gap-1.5 mb-3">
+            <div className="flex items-center gap-2 py-1.5 px-2 bg-mc-bg-tertiary/50 rounded">
+              <span className="text-base">{(task.assigned_agent as unknown as { avatar_emoji: string }).avatar_emoji}</span>
+              <span className="text-xs text-mc-text-secondary truncate">
+                {(task.assigned_agent as unknown as { name: string }).name}
+              </span>
+            </div>
+            <span className="text-xs text-mc-text-secondary px-2">
+              {timeAgo(task.updated_at)}
             </span>
           </div>
         )}
