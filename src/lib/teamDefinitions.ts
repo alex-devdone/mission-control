@@ -6,19 +6,24 @@ export interface TeamDefinition {
 
 export const TEAM_DEFINITIONS: TeamDefinition[] = [
   {
+    key: 'mission-control',
+    title: 'Mission Control',
+    members: ['Team Lead Betty', 'Developer', 'Middle Developer', 'Codex Developer', 'QA'],
+  },
+  {
     key: 'dev-team',
     title: 'Dev Team',
-    members: ['Developer', 'Middle Developer', 'Codex Developer', 'Junior Developer', 'BettyDev', 'betty99dev', 'Mobile Dev'],
+    members: ['Junior Developer', 'BettyDev', 'betty99dev', 'Mobile Dev'],
   },
   {
     key: 'qa-design',
     title: 'QA & Design',
-    members: ['QA', 'betty99qa', 'Designer'],
+    members: ['betty99qa', 'Designer'],
   },
   {
     key: 'leadership',
     title: 'Leadership',
-    members: ['Team Lead Betty', 'Researcher'],
+    members: ['Researcher'],
   },
   {
     key: 'personal-assistants',

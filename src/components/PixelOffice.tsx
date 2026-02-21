@@ -226,6 +226,7 @@ function TeamTabs({
 }
 
 const TEAM_EMOJI: Record<string, string> = {
+  'Mission Control': '🎯',
   'Dev Team': '🏗️',
   'QA & Design': '🧪',
   'Leadership': '👑',
