@@ -219,6 +219,13 @@ function TaskCard({ task, onDragStart, onClick, isDragging }: TaskCardProps) {
     urgent: 'bg-mc-accent-red',
   };
 
+  const priorityBorderClasses = {
+    low: 'border-l-4 border-l-mc-text-secondary/40',
+    normal: 'border-l-4 border-l-mc-accent',
+    high: 'border-l-4 border-l-mc-accent-yellow',
+    urgent: 'border-l-4 border-l-mc-accent-red',
+  };
+
   const isPlanning = task.status === 'planning';
 
   return (
@@ -226,7 +233,7 @@ function TaskCard({ task, onDragStart, onClick, isDragging }: TaskCardProps) {
       draggable
       onDragStart={(e) => onDragStart(e, task)}
       onClick={onClick}
-      className={`group bg-mc-bg-secondary border rounded-lg cursor-pointer transition-all hover:shadow-lg hover:shadow-black/20 ${
+      className={`group bg-mc-bg-secondary border rounded-lg cursor-pointer transition-all hover:shadow-lg hover:shadow-black/20 ${priorityBorderClasses[task.priority]} ${
         isDragging ? 'opacity-50 scale-95' : ''
       } ${isPlanning ? 'border-purple-500/40 hover:border-purple-500' : 'border-mc-border/50 hover:border-mc-accent/40'}`}
     >
