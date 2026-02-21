@@ -37,9 +37,12 @@ function WorkspaceContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const viewParam = searchParams.get('view');
-  const [view, _setView] = useState<'kanban' | 'pixel' | 'schedulers' | 'team-chat'>(
-    viewParam === 'office' || viewParam === 'pixel' || searchParams.has('team') ? 'pixel' : 'kanban'
-  );
+  const [view, _setView] = useState<'kanban' | 'pixel' | 'schedulers' | 'team-chat'>(() => {
+    if (viewParam === 'office' || viewParam === 'pixel' || searchParams.has('team')) return 'pixel';
+    if (viewParam === 'schedulers') return 'schedulers';
+    if (viewParam === 'team-chat' || viewParam === 'chat') return 'team-chat';
+    return 'kanban';
+  });
   const setView = useCallback((v: 'kanban' | 'pixel' | 'schedulers' | 'team-chat') => {
     _setView(v);
     // Clear team/view params when leaving pixel office
