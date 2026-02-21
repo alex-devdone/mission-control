@@ -303,6 +303,24 @@ function TaskCard({ task, onDragStart, onClick, isDragging }: TaskCardProps) {
           </div>
         )}
 
+        {/* Vibe progress */}
+        {task.app && (task.app as unknown as { progress_total?: number }).progress_total && ((task.app as unknown as { progress_total?: number }).progress_total || 0) > 0 && (
+          <div className="flex items-center gap-1.5 mb-2 px-2">
+            <div className="flex-1 h-1.5 bg-mc-bg-tertiary rounded-full overflow-hidden">
+              <div
+                className="h-full bg-mc-accent-green rounded-full transition-all"
+                style={{
+                  width: `${Math.round((((task.app as unknown as { progress_completed?: number }).progress_completed || 0) / ((task.app as unknown as { progress_total?: number }).progress_total || 1)) * 100)}%`,
+                }}
+              />
+            </div>
+            <span className="text-[10px] text-mc-text-secondary flex-shrink-0">
+              {(task.app as unknown as { progress_completed?: number }).progress_completed || 0}/
+              {(task.app as unknown as { progress_total?: number }).progress_total || 0}
+            </span>
+          </div>
+        )}
+
         {/* Footer: priority + timestamp */}
         <div className="flex items-center justify-between pt-2 border-t border-mc-border/20">
           <div className="flex items-center gap-1.5">

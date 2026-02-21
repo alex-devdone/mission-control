@@ -52,7 +52,15 @@ export async function GET(request: NextRequest) {
         assigned_agent_emoji: aa?.avatar_emoji || undefined,
         created_by_agent_name: ca?.name || undefined,
         assigned_agent: aa ? { id: aa._id, name: aa.name, avatar_emoji: aa.avatar_emoji, model: aa.model } : undefined,
-        app: app ? { id: app._id, name: app.name, path: app.path } : undefined,
+        app: app
+          ? {
+              id: app._id,
+              name: app.name,
+              path: app.path,
+              progress_completed: app.progress_completed || 0,
+              progress_total: app.progress_total || 0,
+            }
+          : undefined,
       };
     });
 
