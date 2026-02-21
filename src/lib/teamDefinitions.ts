@@ -13,7 +13,7 @@ export const TEAM_DEFINITIONS: TeamDefinition[] = [
   {
     key: 'dev-team',
     title: 'Dev Team',
-    members: ['Junior Developer', 'BettyDev', 'betty99dev', 'Mobile Dev'],
+    members: ['BettyDev', 'betty99dev', 'Mobile Dev'],
   },
   {
     key: 'personal-assistants',
