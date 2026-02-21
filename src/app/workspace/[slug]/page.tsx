@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
-import { useParams } from 'next/navigation';
+import { useParams, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { ChevronLeft, LayoutGrid, Monitor, Users, Radio, Clock, MessagesSquare } from 'lucide-react';
 import { Header } from '@/components/Header';
@@ -34,7 +34,11 @@ export default function WorkspacePage() {
 
   const [workspace, setWorkspace] = useState<Workspace | null>(null);
   const [notFound, setNotFound] = useState(false);
-  const [view, setView] = useState<'kanban' | 'schedulers' | 'team-chat'>('kanban');
+  const searchParams = useSearchParams();
+  const viewParam = searchParams.get('view');
+  const [view, setView] = useState<'kanban' | 'pixel' | 'schedulers' | 'team-chat'>(
+    viewParam === 'office' || viewParam === 'pixel' || searchParams.has('team') ? 'pixel' : 'kanban'
+  );
   const [agentsOpen, setAgentsOpen] = useState(false);
   const [feedOpen, setFeedOpen] = useState(false);
   
@@ -60,8 +64,9 @@ export default function WorkspacePage() {
   }, [selectedTask, setSelectedTask]);
 
   const handleSwitchView = useCallback((viewIndex: number) => {
-    const views: Array<'kanban' | 'schedulers' | 'team-chat'> = [
+    const views: Array<'kanban' | 'pixel' | 'schedulers' | 'team-chat'> = [
       'kanban',
+      'pixel',
       'schedulers',
       'team-chat',
     ];
@@ -291,14 +296,19 @@ export default function WorkspacePage() {
             Kanban
             <TabBadge count={tasks.filter((t) => t.status !== 'done' && t.status !== 'review').length} />
           </button>
-          <Link
-            href={`/workspace/${slug}/office`}
-            className="flex items-center gap-1.5 px-3 py-1 rounded text-xs font-medium transition-colors text-mc-text-secondary hover:text-mc-text hover:bg-mc-bg-tertiary"
+          <button
+            onClick={() => setView('pixel')}
+            className={`flex items-center gap-1.5 px-3 py-1 rounded text-xs font-medium transition-colors ${
+              view === 'pixel'
+                ? 'bg-mc-accent-purple/20 text-mc-accent-purple border border-mc-accent-purple/40'
+                : 'text-mc-text-secondary hover:text-mc-text hover:bg-mc-bg-tertiary'
+            }`}
           >
             <Monitor className="w-3.5 h-3.5" />
             <span className="hidden sm:inline">Pixel Office</span>
             <span className="sm:hidden">Pixel</span>
-          </Link>
+            <TabBadge count={tasks.filter((t) => t.status !== 'done' && t.status !== 'review').length} />
+          </button>
           <button
             onClick={() => setView('schedulers')}
             className={`flex items-center gap-1.5 px-3 py-1 rounded text-xs font-medium transition-colors ${
@@ -344,6 +354,8 @@ export default function WorkspacePage() {
         />
         {view === 'kanban' ? (
           <MissionQueue workspaceId={workspace.id} />
+        ) : view === 'pixel' ? (
+          <PixelOffice workspaceId={workspace.id} />
         ) : view === 'team-chat' ? (
           <GroupChat />
         ) : (
