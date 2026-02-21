@@ -258,6 +258,11 @@ function TaskCard({ task, onDragStart, onClick, isDragging }: TaskCardProps) {
               <span className="text-xs text-mc-text-secondary truncate">
                 {(task.assigned_agent as unknown as { name: string }).name}
               </span>
+              {(task.assigned_agent as unknown as { model?: string }).model && (
+                <span className="text-[10px] bg-mc-accent/20 text-mc-accent px-1.5 py-0.5 rounded inline-block flex-shrink-0">
+                  {(task.assigned_agent as unknown as { model?: string }).model}
+                </span>
+              )}
             </div>
             <span className="text-xs text-mc-text-secondary px-2">
               {timeAgo(task.updated_at)}
