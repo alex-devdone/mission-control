@@ -13,11 +13,6 @@ export const TEAM_DEFINITIONS: TeamDefinition[] = [
   {
     key: 'personal-assistants',
     title: 'Personal Assistants',
-    members: ['Betty99bot', 'Betty99Shopping', 'betty99coach', 'betty99budget', 'betty99events', 'betty99doctor', 'betty99dev'],
-  },
-  {
-    key: 'ops',
-    title: 'Ops',
-    members: ['bettydevops', 'BettyDevOps'],
+    members: ['Betty99bot', 'Betty99Shopping', 'betty99coach', 'betty99budget', 'betty99events', 'betty99doctor', 'betty99dev', 'bettydevops', 'BettyDevOps'],
   },
 ];
