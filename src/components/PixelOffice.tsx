@@ -612,7 +612,7 @@ export function PixelOffice({ workspaceId }: PixelOfficeProps) {
         name: oa.name,
         role: '',
         avatar_emoji: '🤖',
-        status: (activeAgentIds.has(oa.id) ? 'working' : 'standby') as Agent['status'],
+        status: 'standby' as Agent['status'],
         is_master: false,
         workspace_id: workspaceId || 'default',
         model: oa.model.primary.split('/').pop() || oa.model.primary,
@@ -633,7 +633,7 @@ export function PixelOffice({ workspaceId }: PixelOfficeProps) {
     const allAgents = [
       ...agents.map(a => {
         const ocId = (a as Agent & { openclaw_agent_id?: string }).openclaw_agent_id;
-        if ((ocId && activeAgentIds.has(ocId)) || agentsWithInProgressTasks.has(a.id)) {
+        if (agentsWithInProgressTasks.has(a.id)) {
           return { ...a, status: 'working' as Agent['status'] };
         }
         return a;
