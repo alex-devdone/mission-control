@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useSearchParams, useRouter } from 'next/navigation';
 import { SkipBack, SkipForward, Play, Pause } from 'lucide-react';
 import { useMissionControl } from '@/lib/store';
 import { LimitChip } from '@/components/LimitChip';
@@ -480,7 +481,23 @@ interface PixelOfficeProps {
 
 export function PixelOffice({ workspaceId }: PixelOfficeProps) {
   const { agents, tasks, setSelectedTask } = useMissionControl();
-  const [activeTeam, setActiveTeam] = useState<string>('all');
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const teamParam = searchParams.get('team') || 'all';
+  const [activeTeam, setActiveTeam] = useState<string>(teamParam);
+
+  // Sync team selection to URL
+  const handleTeamChange = useCallback((team: string) => {
+    setActiveTeam(team);
+    const params = new URLSearchParams(searchParams.toString());
+    if (team === 'all') {
+      params.delete('team');
+    } else {
+      params.set('team', team);
+    }
+    const qs = params.toString();
+    router.replace(`${window.location.pathname}${qs ? '?' + qs : ''}`, { scroll: false });
+  }, [searchParams, router]);
 
   // OpenClaw agents (all 16)
   const [openclawAgents, setOpenclawAgents] = useState<{ id: string; name: string; model: { primary: string }; channels: { channel: string }[] }[]>([]);
@@ -663,7 +680,7 @@ export function PixelOffice({ workspaceId }: PixelOfficeProps) {
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
       {/* Team filter tabs */}
-      <TeamTabs activeTeam={activeTeam} onTeamChange={setActiveTeam} agentCounts={agentCounts} />
+      <TeamTabs activeTeam={activeTeam} onTeamChange={handleTeamChange} agentCounts={agentCounts} />
 
       {/* Office area */}
       <div className="flex-1 flex items-center justify-center p-8 pt-12 overflow-auto relative">
