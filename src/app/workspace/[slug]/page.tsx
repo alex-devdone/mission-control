@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
-import { useParams, useSearchParams } from 'next/navigation';
+import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { ChevronLeft, LayoutGrid, Monitor, Users, Radio, Clock, MessagesSquare } from 'lucide-react';
 import { Header } from '@/components/Header';
@@ -34,9 +34,7 @@ export default function WorkspacePage() {
 
   const [workspace, setWorkspace] = useState<Workspace | null>(null);
   const [notFound, setNotFound] = useState(false);
-  const searchParams = useSearchParams();
-  const hasTeamParam = searchParams.has('team');
-  const [view, setView] = useState<'kanban' | 'pixel' | 'schedulers' | 'team-chat'>(hasTeamParam ? 'pixel' : 'kanban');
+  const [view, setView] = useState<'kanban' | 'pixel' | 'schedulers' | 'team-chat'>('kanban');
   const [agentsOpen, setAgentsOpen] = useState(false);
   const [feedOpen, setFeedOpen] = useState(false);
   
