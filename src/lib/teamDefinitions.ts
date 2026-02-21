@@ -8,7 +8,7 @@ export const TEAM_DEFINITIONS: TeamDefinition[] = [
   {
     key: 'mission-control',
     title: 'Mission Control',
-    members: ['Team Lead Betty', 'Developer', 'Middle Developer', 'Codex Developer', 'QA'],
+    members: ['Team Lead Betty', 'Developer', 'Middle Developer', 'Codex Developer', 'QA', 'mcDesigner'],
   },
   {
     key: 'dev-team',
@@ -18,7 +18,7 @@ export const TEAM_DEFINITIONS: TeamDefinition[] = [
   {
     key: 'qa-design',
     title: 'QA & Design',
-    members: ['betty99qa', 'Designer'],
+    members: ['betty99qa'],
   },
   {
     key: 'leadership',
