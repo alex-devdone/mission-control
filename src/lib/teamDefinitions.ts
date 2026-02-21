@@ -23,6 +23,6 @@ export const TEAM_DEFINITIONS: TeamDefinition[] = [
   {
     key: 'ops',
     title: 'Ops',
-    members: ['bettydevops'],
+    members: ['bettydevops', 'BettyDevOps', 'devops'],
   },
 ];

@@ -594,7 +594,14 @@ export function PixelOffice({ workspaceId }: PixelOfficeProps) {
 
     // Create Agent-like objects for OpenClaw agents not already in MC
     const ocOnlyAgents: Agent[] = openclawAgents
-      .filter(oa => !agents.some(a => (a as Agent & { openclaw_agent_id?: string }).openclaw_agent_id === oa.id || a.name.toLowerCase() === oa.name.toLowerCase()))
+      .filter(oa => !agents.some(a => {
+        const ocId = (a as Agent & { openclaw_agent_id?: string }).openclaw_agent_id;
+        if (ocId === oa.id) return true;
+        const aName = a.name.toLowerCase();
+        const oaName = oa.name.toLowerCase();
+        const oaId = oa.id.toLowerCase();
+        return aName === oaName || aName === oaId || aName.includes(oaId) || oaId.includes(aName);
+      }))
       .map(oa => ({
         id: oa.id,
         name: oa.name,
