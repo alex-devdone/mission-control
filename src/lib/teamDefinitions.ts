@@ -18,7 +18,7 @@ export const TEAM_DEFINITIONS: TeamDefinition[] = [
   {
     key: 'qa-design',
     title: 'QA & Design',
-    members: ['betty99qa'],
+    members: [],
   },
   {
     key: 'leadership',
