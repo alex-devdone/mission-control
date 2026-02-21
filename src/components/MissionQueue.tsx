@@ -36,6 +36,32 @@ function timeAgo(dateString: string): string {
   return `${diffDays}d ago`;
 }
 
+function formatStatusDuration(dateString: string): string {
+  const date = new Date(dateString);
+  const now = new Date();
+  const diffMs = now.getTime() - date.getTime();
+  
+  if (diffMs < 0) return '< 1m';
+  
+  const diffSecs = Math.floor(diffMs / 1000);
+  const diffMins = Math.floor(diffSecs / 60);
+  const diffHours = Math.floor(diffMins / 60);
+  const diffDays = Math.floor(diffHours / 24);
+  
+  if (diffMins < 1) return '< 1m';
+  if (diffMins < 60) {
+    const secs = diffSecs % 60;
+    return secs > 0 ? `${diffMins}m ${secs}s` : `${diffMins}m`;
+  }
+  if (diffHours < 24) {
+    const mins = diffMins % 60;
+    return mins > 0 ? `${diffHours}h ${mins}m` : `${diffHours}h`;
+  }
+  
+  const hours = diffHours % 24;
+  return hours > 0 ? `${diffDays}d ${hours}h` : `${diffDays}d`;
+}
+
 export function MissionQueue({ workspaceId }: MissionQueueProps) {
   const { tasks, agents, updateTaskStatus, addEvent } = useMissionControl();
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -288,6 +314,11 @@ function TaskCard({ task, onDragStart, onClick, isDragging }: TaskCardProps) {
           <span className="text-[10px] text-mc-text-secondary/60">
             {formatDistanceToNow(new Date(task.created_at), { addSuffix: true })}
           </span>
+        </div>
+
+        {/* Status duration timer */}
+        <div className="text-[10px] text-mc-text-secondary/50 px-2 mt-1">
+          {task.status.toUpperCase()} for {formatStatusDuration(task.updated_at)}
         </div>
       </div>
     </div>
