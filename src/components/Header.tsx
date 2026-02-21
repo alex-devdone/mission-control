@@ -7,6 +7,7 @@ import { Zap, Settings, ChevronLeft, LayoutGrid, Eye } from 'lucide-react';
 import { useMissionControl } from '@/lib/store';
 import { format } from 'date-fns';
 import type { Workspace } from '@/lib/types';
+import { ShortcutsPopover } from './ShortcutsPopover';
 
 interface HeaderProps {
   workspace?: Workspace;
@@ -150,6 +151,7 @@ export function Header({ workspace, pageName }: HeaderProps) {
           />
           <span className="hidden sm:inline">{isOnline ? 'ONLINE' : 'OFFLINE'}</span>
         </div>
+        <ShortcutsPopover />
         <button
           onClick={() => router.push('/settings')}
           className="p-2 hover:bg-mc-bg-tertiary rounded text-mc-text-secondary"

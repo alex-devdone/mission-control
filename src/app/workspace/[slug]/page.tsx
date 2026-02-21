@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { ChevronLeft, LayoutGrid, Monitor, Users, Radio, Clock, MessagesSquare } from 'lucide-react';
@@ -14,6 +14,7 @@ import { SchedulerView } from '@/components/SchedulerView';
 import { GroupChat } from '@/components/GroupChat';
 import { useMissionControl } from '@/lib/store';
 import { useSSE } from '@/hooks/useSSE';
+import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
 import { debug } from '@/lib/debug';
 import type { Task, Workspace } from '@/lib/types';
 
@@ -35,9 +36,46 @@ export default function WorkspacePage() {
   const [view, setView] = useState<'kanban' | 'pixel' | 'schedulers' | 'team-chat'>('kanban');
   const [agentsOpen, setAgentsOpen] = useState(false);
   const [feedOpen, setFeedOpen] = useState(false);
+  
+  const { setSelectedTask, selectedTask } = useMissionControl();
 
   // Connect to SSE for real-time updates
   useSSE();
+
+  // Setup keyboard shortcuts
+  const handleNewTask = useCallback(() => {
+    setSelectedTask(null);
+  }, [setSelectedTask]);
+
+  const handleFocusSearch = useCallback(() => {
+    const searchInput = document.querySelector('input[placeholder*="search" i]') as HTMLInputElement;
+    if (searchInput) searchInput.focus();
+  }, []);
+
+  const handleCloseModal = useCallback(() => {
+    if (selectedTask) {
+      setSelectedTask(null);
+    }
+  }, [selectedTask, setSelectedTask]);
+
+  const handleSwitchView = useCallback((viewIndex: number) => {
+    const views: Array<'kanban' | 'pixel' | 'schedulers' | 'team-chat'> = [
+      'kanban',
+      'pixel',
+      'schedulers',
+      'team-chat',
+    ];
+    if (views[viewIndex]) {
+      setView(views[viewIndex]);
+    }
+  }, []);
+
+  useKeyboardShortcuts({
+    onNewTask: handleNewTask,
+    onFocusSearch: handleFocusSearch,
+    onCloseModal: handleCloseModal,
+    onSwitchView: handleSwitchView,
+  });
 
   // Load workspace data
   useEffect(() => {
