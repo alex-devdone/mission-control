@@ -368,6 +368,14 @@ export interface OpenClawAgentFull {
   model: { primary: string; fallbacks?: string[] };
   channels: { channel: string; accountId: string; botUsername?: string }[];
   subagents?: { allowAgents: string[] };
+
+  // Observatory contract fields
+  agentId?: string;
+  displayName?: string;
+  primaryModel?: string;
+  fallbackModels?: string[];
+  activeRuntimeModel?: string | null;
+  modelSourceTimestamp?: string;
 }
 
 export interface CronJob {

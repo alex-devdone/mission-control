@@ -11,13 +11,14 @@ export async function GET() {
 
     const res = await fetch(`${GATEWAY_URL}/tools/invoke`, {
       method: 'POST',
+      cache: 'no-store',
       headers: {
         'Authorization': `Bearer ${token}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
         tool: 'sessions_list',
-        input: { limit: 50, activeMinutes: 30 },
+        input: { limit: 100, activeMinutes: 30 },
       }),
     });
 
@@ -29,9 +30,17 @@ export async function GET() {
     const textContent = data.result?.content?.find((c: Record<string, unknown>) => c.text)?.text;
     const parsed = textContent ? JSON.parse(textContent as string) : { count: 0, sessions: [] };
 
+    const nowIso = new Date().toISOString();
+    const sessions = Array.isArray(parsed.sessions) ? parsed.sessions : [];
+
     return NextResponse.json({
-      count: parsed.count || 0,
-      sessions: parsed.sessions || [],
+      count: parsed.count || sessions.length,
+      sessions,
+      modelSourceTimestamp: nowIso,
+    }, {
+      headers: {
+        'Cache-Control': 'no-store, max-age=0',
+      },
     });
   } catch (error) {
     console.error('Failed to fetch live sessions:', error);

@@ -7,6 +7,13 @@ import { LimitChip } from './LimitChip';
 import { TokenUsageChart, MiniTokenChart } from './TokenUsageChart';
 import type { SessionRecord } from './TokenUsageChart';
 
+function getAgentIdFromSessionKey(key: string): string | null {
+  if (!key) return null;
+  const parts = key.split(':');
+  if (parts.length >= 2 && parts[0] === 'agent') return parts[1] || null;
+  return null;
+}
+
 function ModelBadge({ model }: { model: string }) {
   const m = model.toLowerCase();
   const colorMap: Record<string, string> = {
@@ -48,8 +55,9 @@ function AgentDetailModal({ agent, cronJobs, sessions, onClose }: {
   onClose: () => void;
 }) {
   const [tab, setTab] = useState<'info' | 'models' | 'schedulers' | 'activity'>('info');
-  const agentJobs = cronJobs.filter(j => j.agentId === agent.id);
-  const agentSessions = sessions.filter(s => s.key.includes(agent.id));
+  const canonicalId = agent.agentId || agent.id;
+  const agentJobs = cronJobs.filter(j => j.agentId === canonicalId);
+  const agentSessions = sessions.filter(s => getAgentIdFromSessionKey(s.key) === canonicalId);
 
   const tabs = [
     { id: 'info' as const, label: 'Info', icon: Server },
@@ -66,8 +74,8 @@ function AgentDetailModal({ agent, cronJobs, sessions, onClose }: {
           <div className="flex items-center gap-2">
             <span className="text-2xl">🤖</span>
             <div>
-              <h2 className="font-semibold text-mc-text">{agent.name}</h2>
-              <p className="text-xs text-mc-text-secondary font-mono">{agent.id}</p>
+              <h2 className="font-semibold text-mc-text font-mono">{agent.agentId || agent.id}</h2>
+              <p className="text-xs text-mc-text-secondary">{agent.displayName || agent.name}</p>
             </div>
           </div>
           <button onClick={onClose} className="p-1 hover:bg-mc-bg-tertiary rounded">
@@ -135,16 +143,20 @@ function AgentDetailModal({ agent, cronJobs, sessions, onClose }: {
             <>
               <div className="flex items-center gap-2">
                 <span className="text-mc-text-secondary">Primary:</span>
-                <ModelBadge model={agent.model.primary} />
+                <ModelBadge model={agent.primaryModel || agent.model.primary} />
               </div>
-              {agent.model.fallbacks && agent.model.fallbacks.length > 0 && (
+              {(agent.fallbackModels || agent.model.fallbacks || []).length > 0 && (
                 <div>
                   <span className="text-mc-text-secondary">Fallbacks:</span>
                   <div className="flex flex-wrap gap-1 mt-1">
-                    {agent.model.fallbacks.map(f => <ModelBadge key={f} model={f} />)}
+                    {(agent.fallbackModels || agent.model.fallbacks || []).map(f => <ModelBadge key={f} model={f} />)}
                   </div>
                 </div>
               )}
+              <div className="flex items-center gap-2">
+                <span className="text-mc-text-secondary">Active:</span>
+                <span className="text-xs text-mc-text font-mono">{agentSessions[0]?.model || agent.activeRuntimeModel || 'idle'}</span>
+              </div>
             </>
           )}
           {tab === 'schedulers' && (
@@ -207,21 +219,52 @@ export function ObservatoryAgents() {
   const [sessionRecords, setSessionRecords] = useState<SessionRecord[]>([]);
   const [days, setDays] = useState(7);
   const [loading, setLoading] = useState(true);
+  const [liveUnavailable, setLiveUnavailable] = useState(false);
+  const [liveModelTimestamp, setLiveModelTimestamp] = useState<string | null>(null);
 
   useEffect(() => {
     Promise.all([
-      fetch('/api/openclaw/agents-full').then(r => r.json()),
-      fetch('/api/openclaw/sessions-live').then(r => r.json()).catch(() => ({ sessions: [] })),
+      fetch('/api/openclaw/agents-full', { cache: 'no-store' }).then(r => r.json()),
       fetch('/api/openclaw/cron').then(r => r.json()).catch(() => ({ jobs: [] })),
       fetch(`/api/sessions/tokens?days=${days}&raw=1`).then(r => r.json()).catch(() => []),
-    ]).then(([agentData, sessionData, cronData, rawSessions]) => {
+    ]).then(([agentData, cronData, rawSessions]) => {
       setAgents(agentData.agents || []);
-      setSessions(sessionData.sessions || []);
       setCronJobs(cronData.jobs || []);
       if (Array.isArray(rawSessions)) setSessionRecords(rawSessions);
       setLoading(false);
     }).catch(() => setLoading(false));
   }, [days]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const fetchLiveSessions = async () => {
+      try {
+        const res = await fetch('/api/openclaw/sessions-live', { cache: 'no-store' });
+        if (!res.ok) throw new Error('sessions-live fetch failed');
+        const data = await res.json();
+        if (!cancelled) {
+          setSessions(Array.isArray(data.sessions) ? data.sessions : []);
+          setLiveModelTimestamp(data.modelSourceTimestamp || new Date().toISOString());
+          setLiveUnavailable(false);
+        }
+      } catch {
+        if (!cancelled) {
+          setSessions([]);
+          setLiveUnavailable(true);
+          setLiveModelTimestamp(new Date().toISOString());
+        }
+      }
+    };
+
+    fetchLiveSessions();
+    const id = setInterval(fetchLiveSessions, 15000);
+
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
+  }, []);
 
   // Group raw session records by agent_id
   const agentSessionMap = useMemo(() => {
@@ -233,10 +276,17 @@ export function ObservatoryAgents() {
     return map;
   }, [sessionRecords]);
 
-  const activeAgentIds = new Set(sessions.map(s => {
-    const parts = s.key.split(':');
-    return parts[1];
-  }));
+  const runtimeModelByAgentId = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const session of sessions) {
+      const agentId = getAgentIdFromSessionKey(session.key);
+      if (!agentId) continue;
+      if (session.model) map.set(agentId, session.model);
+    }
+    return map;
+  }, [sessions]);
+
+  const activeAgentIds = new Set(Array.from(runtimeModelByAgentId.keys()));
 
   if (loading) {
     return <div className="flex items-center justify-center py-12 text-mc-text-secondary">Loading agents...</div>;
@@ -261,10 +311,21 @@ export function ObservatoryAgents() {
           </button>
         ))}
       </div>
+      <div className="text-[10px] text-mc-text-secondary mb-2 text-right">
+        Live models: {liveUnavailable ? 'temporarily unavailable' : 'fresh'}
+        {liveModelTimestamp ? ` • ${new Date(liveModelTimestamp).toLocaleTimeString()}` : ''}
+      </div>
       <TokenUsageChart days={days} />
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
         {agents.map(agent => {
-          const isActive = activeAgentIds.has(agent.id);
+          const canonicalId = agent.agentId || agent.id;
+          const displayName = agent.displayName || agent.name;
+          const primaryModel = agent.primaryModel || agent.model.primary;
+          const fallbackModels = agent.fallbackModels || agent.model.fallbacks || [];
+          const liveModel = runtimeModelByAgentId.get(canonicalId) || agent.activeRuntimeModel || null;
+          const isActive = activeAgentIds.has(canonicalId);
+          const activeLabel = liveUnavailable ? 'unavailable' : (liveModel || 'idle');
+
           return (
             <button key={agent.id} onClick={() => setSelectedAgent(agent)}
               className={`text-left bg-mc-bg-secondary rounded-lg p-4 border transition-all hover:bg-mc-bg-tertiary ${
@@ -274,15 +335,26 @@ export function ObservatoryAgents() {
                 <div className="flex items-center gap-2">
                   <span className="text-xl">🤖</span>
                   <div>
-                    <div className="font-medium text-sm text-mc-text">{agent.name}</div>
-                    <div className="text-[10px] text-mc-text-secondary font-mono">{agent.id}</div>
+                    <div className="font-medium text-sm text-mc-text font-mono">{canonicalId}</div>
+                    <div className="text-[10px] text-mc-text-secondary">{displayName}</div>
                   </div>
                 </div>
                 {isActive && <span className="w-2 h-2 rounded-full bg-green-400 animate-pulse mt-1" />}
               </div>
+
+              <div className="flex flex-wrap gap-1.5 mt-2 text-[10px]">
+                <span className="px-1.5 py-0.5 rounded bg-mc-bg-tertiary text-mc-text-secondary">Primary: {primaryModel.split('/').pop() || primaryModel}</span>
+                <span className="px-1.5 py-0.5 rounded bg-mc-bg-tertiary text-mc-text-secondary" title={fallbackModels.join(', ')}>
+                  Fallbacks: {fallbackModels.length ? fallbackModels.map(m => m.split('/').pop() || m).join(', ') : 'none'}
+                </span>
+                <span className={`px-1.5 py-0.5 rounded ${liveUnavailable ? 'bg-amber-500/20 text-amber-400' : liveModel ? 'bg-green-500/20 text-green-400' : 'bg-mc-bg-tertiary text-mc-text-secondary'}`}>
+                  Active: {activeLabel}
+                </span>
+              </div>
+
               <div className="flex items-center gap-2 mt-2">
-                <ModelBadge model={agent.model.primary} />
-                <LimitChip model={agent.model.primary} />
+                <ModelBadge model={primaryModel} />
+                <LimitChip model={primaryModel} />
               </div>
               <ChannelBadges channels={agent.channels} />
               <MiniTokenChart sessions={agentSessionMap.get(agent.id) || []} days={days} />

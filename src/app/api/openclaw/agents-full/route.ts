@@ -99,13 +99,24 @@ export async function GET() {
       const primary = (agentModel?.primary || defaultModel?.primary || 'unknown') as string;
       const fallbacks = (agentModel?.fallbacks || defaultModel?.fallbacks || []) as string[];
 
+      const agentId = agent.id as string;
+      const displayName = (agent.name || agent.id) as string;
+
       return {
-        id: agent.id,
-        name: agent.name || agent.id,
+        id: agentId,
+        name: displayName,
         workspace: agent.workspace || defaults.workspace || '',
         model: { primary, fallbacks },
         channels: agentBindings,
         subagents: agent.subagents,
+
+        // Observatory contract fields
+        agentId,
+        displayName,
+        primaryModel: primary,
+        fallbackModels: fallbacks,
+        activeRuntimeModel: null,
+        modelSourceTimestamp: new Date().toISOString(),
       };
     });
 
@@ -135,6 +146,7 @@ export async function GET() {
             }
           } catch { /* ignore */ }
 
+          const modelSourceTimestamp = new Date().toISOString();
           agents.push({
             id: dirName,
             name: dirName,
@@ -143,6 +155,14 @@ export async function GET() {
             channels: [],
             subagents: undefined,
             source: 'directory', // mark as discovered from directory
+
+            // Observatory contract fields
+            agentId: dirName,
+            displayName: dirName,
+            primaryModel: model,
+            fallbackModels: defaultFallbacks,
+            activeRuntimeModel: null,
+            modelSourceTimestamp,
           });
         }
       }
