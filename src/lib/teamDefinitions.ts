@@ -16,11 +16,6 @@ export const TEAM_DEFINITIONS: TeamDefinition[] = [
     members: ['Junior Developer', 'BettyDev', 'betty99dev', 'Mobile Dev'],
   },
   {
-    key: 'qa-design',
-    title: 'QA & Design',
-    members: [],
-  },
-  {
     key: 'leadership',
     title: 'Leadership',
     members: ['Researcher'],
