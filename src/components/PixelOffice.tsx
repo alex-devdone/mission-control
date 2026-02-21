@@ -384,8 +384,8 @@ function OfficeScene({
     }
   });
 
-  // Teams in order
-  const TEAM_ORDER = ['Dev Team', 'QA & Design', 'Leadership', 'Ops', 'Personal Assistants'];
+  // Teams in order — derive from TEAM_DEFINITIONS to stay in sync
+  const TEAM_ORDER = TEAM_DEFINITIONS.map(d => d.title);
   const teams = TEAM_ORDER.filter(t => teamMap.has(t));
 
   return (
