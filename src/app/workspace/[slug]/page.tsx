@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, Suspense } from 'react';
 import { useParams, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { ChevronLeft, LayoutGrid, Monitor, Users, Radio, Clock, MessagesSquare } from 'lucide-react';
@@ -19,7 +19,7 @@ import { TabBadge } from '@/components/NavBadges';
 import { debug } from '@/lib/debug';
 import type { Task, Workspace } from '@/lib/types';
 
-export default function WorkspacePage() {
+function WorkspaceContent() {
   const params = useParams();
   const slug = params.slug as string;
   
@@ -369,5 +369,17 @@ export default function WorkspacePage() {
 
       <SSEDebugPanel />
     </div>
+  );
+}
+
+export default function WorkspacePage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-mc-bg flex items-center justify-center">
+        <div className="text-4xl animate-pulse">🦞</div>
+      </div>
+    }>
+      <WorkspaceContent />
+    </Suspense>
   );
 }
