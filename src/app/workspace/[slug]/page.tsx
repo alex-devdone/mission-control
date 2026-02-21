@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState, useCallback, Suspense } from 'react';
-import { useParams, useSearchParams } from 'next/navigation';
+import { useParams, useSearchParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { ChevronLeft, LayoutGrid, Monitor, Users, Radio, Clock, MessagesSquare } from 'lucide-react';
 import { Header } from '@/components/Header';
@@ -35,10 +35,18 @@ function WorkspaceContent() {
   const [workspace, setWorkspace] = useState<Workspace | null>(null);
   const [notFound, setNotFound] = useState(false);
   const searchParams = useSearchParams();
+  const router = useRouter();
   const viewParam = searchParams.get('view');
-  const [view, setView] = useState<'kanban' | 'pixel' | 'schedulers' | 'team-chat'>(
+  const [view, _setView] = useState<'kanban' | 'pixel' | 'schedulers' | 'team-chat'>(
     viewParam === 'office' || viewParam === 'pixel' || searchParams.has('team') ? 'pixel' : 'kanban'
   );
+  const setView = useCallback((v: 'kanban' | 'pixel' | 'schedulers' | 'team-chat') => {
+    _setView(v);
+    // Clear team/view params when leaving pixel office
+    if (v !== 'pixel' && (searchParams.has('team') || searchParams.has('view'))) {
+      router.replace(`/workspace/${slug}`, { scroll: false });
+    }
+  }, [searchParams, router, slug]);
   const [agentsOpen, setAgentsOpen] = useState(false);
   const [feedOpen, setFeedOpen] = useState(false);
   
