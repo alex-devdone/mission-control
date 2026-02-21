@@ -15,6 +15,7 @@ import { GroupChat } from '@/components/GroupChat';
 import { useMissionControl } from '@/lib/store';
 import { useSSE } from '@/hooks/useSSE';
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
+import { TabBadge } from '@/components/NavBadges';
 import { debug } from '@/lib/debug';
 import type { Task, Workspace } from '@/lib/types';
 
@@ -37,7 +38,7 @@ export default function WorkspacePage() {
   const [agentsOpen, setAgentsOpen] = useState(false);
   const [feedOpen, setFeedOpen] = useState(false);
   
-  const { setSelectedTask, selectedTask } = useMissionControl();
+  const { setSelectedTask, selectedTask, tasks, events } = useMissionControl();
 
   // Connect to SSE for real-time updates
   useSSE();
@@ -289,6 +290,7 @@ export default function WorkspacePage() {
           >
             <LayoutGrid className="w-3.5 h-3.5" />
             Kanban
+            <TabBadge count={tasks.filter((t) => t.status !== 'done' && t.status !== 'review').length} />
           </button>
           <button
             onClick={() => setView('pixel')}
@@ -301,6 +303,7 @@ export default function WorkspacePage() {
             <Monitor className="w-3.5 h-3.5" />
             <span className="hidden sm:inline">Pixel Office</span>
             <span className="sm:hidden">Pixel</span>
+            <TabBadge count={tasks.filter((t) => t.status !== 'done' && t.status !== 'review').length} />
           </button>
           <button
             onClick={() => setView('schedulers')}
@@ -325,6 +328,7 @@ export default function WorkspacePage() {
             <MessagesSquare className="w-3.5 h-3.5" />
             <span className="hidden sm:inline">Team Chat</span>
             <span className="sm:hidden">Chat</span>
+            <TabBadge count={events.filter((e) => e.type === 'message_sent').length} />
           </button>
         </div>
 
