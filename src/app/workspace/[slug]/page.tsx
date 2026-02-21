@@ -34,7 +34,7 @@ export default function WorkspacePage() {
 
   const [workspace, setWorkspace] = useState<Workspace | null>(null);
   const [notFound, setNotFound] = useState(false);
-  const [view, setView] = useState<'kanban' | 'pixel' | 'schedulers' | 'team-chat'>('kanban');
+  const [view, setView] = useState<'kanban' | 'schedulers' | 'team-chat'>('kanban');
   const [agentsOpen, setAgentsOpen] = useState(false);
   const [feedOpen, setFeedOpen] = useState(false);
   
@@ -60,9 +60,8 @@ export default function WorkspacePage() {
   }, [selectedTask, setSelectedTask]);
 
   const handleSwitchView = useCallback((viewIndex: number) => {
-    const views: Array<'kanban' | 'pixel' | 'schedulers' | 'team-chat'> = [
+    const views: Array<'kanban' | 'schedulers' | 'team-chat'> = [
       'kanban',
-      'pixel',
       'schedulers',
       'team-chat',
     ];
@@ -292,19 +291,14 @@ export default function WorkspacePage() {
             Kanban
             <TabBadge count={tasks.filter((t) => t.status !== 'done' && t.status !== 'review').length} />
           </button>
-          <button
-            onClick={() => setView('pixel')}
-            className={`flex items-center gap-1.5 px-3 py-1 rounded text-xs font-medium transition-colors ${
-              view === 'pixel'
-                ? 'bg-mc-accent-purple/20 text-mc-accent-purple border border-mc-accent-purple/40'
-                : 'text-mc-text-secondary hover:text-mc-text hover:bg-mc-bg-tertiary'
-            }`}
+          <Link
+            href={`/workspace/${slug}/office`}
+            className="flex items-center gap-1.5 px-3 py-1 rounded text-xs font-medium transition-colors text-mc-text-secondary hover:text-mc-text hover:bg-mc-bg-tertiary"
           >
             <Monitor className="w-3.5 h-3.5" />
             <span className="hidden sm:inline">Pixel Office</span>
             <span className="sm:hidden">Pixel</span>
-            <TabBadge count={tasks.filter((t) => t.status !== 'done' && t.status !== 'review').length} />
-          </button>
+          </Link>
           <button
             onClick={() => setView('schedulers')}
             className={`flex items-center gap-1.5 px-3 py-1 rounded text-xs font-medium transition-colors ${
@@ -350,8 +344,6 @@ export default function WorkspacePage() {
         />
         {view === 'kanban' ? (
           <MissionQueue workspaceId={workspace.id} />
-        ) : view === 'pixel' ? (
-          <PixelOffice workspaceId={workspace.id} />
         ) : view === 'team-chat' ? (
           <GroupChat />
         ) : (
