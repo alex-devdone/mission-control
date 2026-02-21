@@ -172,8 +172,14 @@ function IdleAgent({ agent }: { agent: Agent }) {
 
 // Team grouping helper
 function getTeam(agent: Agent): string {
+  // First: match by name in TEAM_DEFINITIONS.members
+  for (const def of TEAM_DEFINITIONS) {
+    if (def.members.some(m => m.toLowerCase() === agent.name.toLowerCase())) {
+      return def.title;
+    }
+  }
+  // Fallback: match by role
   const role = agent.role.toLowerCase();
-
   if (role.includes('developer') || role.includes('dev')) return 'Dev Team';
   if (role.includes('qa') || role.includes('design')) return 'QA & Design';
   if (role.includes('lead') || role.includes('research')) return 'Leadership';
@@ -182,6 +188,13 @@ function getTeam(agent: Agent): string {
 }
 
 function getTeamKey(agent: Agent): string {
+  // First: match by name in TEAM_DEFINITIONS.members
+  for (const def of TEAM_DEFINITIONS) {
+    if (def.members.some(m => m.toLowerCase() === agent.name.toLowerCase())) {
+      return def.key;
+    }
+  }
+  // Fallback: match by role
   const teamTitle = getTeam(agent);
   const team = TEAM_DEFINITIONS.find((def) => def.title === teamTitle);
   return team?.key ?? 'personal-assistants';
