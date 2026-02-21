@@ -185,13 +185,21 @@ export interface OpenClawSession {
 
 export type ActivityType = 'spawned' | 'updated' | 'completed' | 'file_created' | 'status_changed';
 
+export interface ActivityMetadata {
+  model?: string;
+  tokens_in?: number;
+  tokens_out?: number;
+  tokens_estimate?: number;
+  [key: string]: unknown;
+}
+
 export interface TaskActivity {
   id: string;
   task_id: string;
   agent_id?: string;
   activity_type: ActivityType;
   message: string;
-  metadata?: string;
+  metadata?: ActivityMetadata | string | null;
   created_at: string;
   // Joined fields
   agent?: Agent;

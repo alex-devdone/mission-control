@@ -121,13 +121,20 @@ export function ActivityLog({ taskId }: ActivityLogProps) {
     }
   };
 
-  const parseMetadata = (metadataStr: string | undefined) => {
-    if (!metadataStr) return null;
+  const parseMetadata = (metadataValue: TaskActivity['metadata']) => {
+    if (!metadataValue) return null;
+    if (typeof metadataValue === 'object') return metadataValue as Record<string, unknown>;
     try {
-      return JSON.parse(metadataStr);
+      return JSON.parse(metadataValue);
     } catch {
       return null;
     }
+  };
+
+  const formatTokenCount = (value: unknown) => {
+    if (typeof value !== 'number' || Number.isNaN(value)) return null;
+    if (value >= 1000) return `${(value / 1000).toFixed(1)}k`;
+    return `${value}`;
   };
 
   if (loading) {
@@ -177,37 +184,25 @@ export function ActivityLog({ taskId }: ActivityLogProps) {
             </p>
 
             {/* Metadata */}
-            {activity.metadata && (
-              <div className="mt-2 space-y-1">
-                {(() => {
-                  const metadata = parseMetadata(typeof activity.metadata === 'string' ? activity.metadata : JSON.stringify(activity.metadata));
-                  const model = metadata?.model;
-                  const tokens = metadata?.tokens_estimate;
-                  
-                  return (
-                    <>
-                      {model && (
-                        <div className="flex items-center gap-2">
-                          <span className={getModelBadgeStyles(model)}>
-                            {model}
-                          </span>
-                          {tokens && (
-                            <span className="text-xs text-mc-text-secondary">
-                              {tokens} tokens
-                            </span>
-                          )}
-                        </div>
-                      )}
-                      <div className="p-2 bg-mc-bg-tertiary rounded text-xs text-mc-text-secondary font-mono">
-                        {typeof activity.metadata === 'string' 
-                          ? (() => { try { return JSON.stringify(JSON.parse(activity.metadata), null, 2); } catch { return activity.metadata; } })()
-                          : JSON.stringify(activity.metadata, null, 2)}
-                      </div>
-                    </>
-                  );
-                })()}
-              </div>
-            )}
+            {activity.metadata && (() => {
+              const metadata = parseMetadata(activity.metadata);
+              if (!metadata) return null;
+
+              const model = typeof metadata.model === 'string' ? metadata.model : undefined;
+              const tokensIn = formatTokenCount(metadata.tokens_in ?? metadata.tokensIn);
+              const tokensOut = formatTokenCount(metadata.tokens_out ?? metadata.tokensOut);
+
+              if (!model && !tokensIn && !tokensOut) return null;
+
+              return (
+                <div className="mt-1 text-xs text-mc-text-secondary font-mono">
+                  {model && <span className={getModelBadgeStyles(model)}>{model}</span>}
+                  {(tokensIn || tokensOut) && (
+                    <span className="ml-2">{tokensIn ?? '0'}→{tokensOut ?? '0'} tokens</span>
+                  )}
+                </div>
+              );
+            })()}
 
             {/* Timestamp */}
             <div className="text-xs text-mc-text-secondary mt-2">

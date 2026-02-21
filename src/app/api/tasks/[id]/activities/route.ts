@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { connectDb, TaskActivity, Agent } from '@/lib/db';
 import { broadcast } from '@/lib/events';
-import type { TaskActivity as TaskActivityType } from '@/lib/types';
+import type { TaskActivity as TaskActivityType, ActivityMetadata } from '@/lib/types';
 
 export async function GET(
   request: NextRequest,
@@ -41,6 +41,18 @@ export async function GET(
   }
 }
 
+function normalizeMetadata(input: unknown): ActivityMetadata | null {
+  if (!input || typeof input !== 'object') return null;
+  const data = input as Record<string, unknown>;
+  const metadata: ActivityMetadata = {
+    ...data,
+    model: typeof data.model === 'string' ? data.model : undefined,
+    tokens_in: typeof data.tokens_in === 'number' ? data.tokens_in : undefined,
+    tokens_out: typeof data.tokens_out === 'number' ? data.tokens_out : undefined,
+  };
+  return metadata;
+}
+
 export async function POST(
   request: NextRequest,
   { params }: { params: { id: string } }
@@ -50,6 +62,7 @@ export async function POST(
     const taskId = params.id;
     const body = await request.json();
     const { activity_type, message, agent_id, metadata } = body;
+    const normalizedMetadata = normalizeMetadata(metadata);
 
     if (!activity_type || !message) {
       return NextResponse.json({ error: 'activity_type and message are required' }, { status: 400 });
@@ -58,7 +71,7 @@ export async function POST(
     const id = crypto.randomUUID();
     await TaskActivity.create({
       _id: id, task_id: taskId, agent_id: agent_id || null,
-      activity_type, message, metadata: metadata || null,
+      activity_type, message, metadata: normalizedMetadata,
     });
 
     const activity = await TaskActivity.findById(id).lean() as any;

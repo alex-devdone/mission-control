@@ -5,6 +5,7 @@ import { SkipBack, SkipForward, Play, Pause } from 'lucide-react';
 import { useMissionControl } from '@/lib/store';
 import { LimitChip } from '@/components/LimitChip';
 import type { Agent } from '@/lib/types';
+import { TEAM_DEFINITIONS } from '@/lib/teamDefinitions';
 
 // --- Snapshot types ---
 interface SnapshotAgent {
@@ -172,12 +173,56 @@ function IdleAgent({ agent }: { agent: Agent }) {
 // Team grouping helper
 function getTeam(agent: Agent): string {
   const role = agent.role.toLowerCase();
-  
+
   if (role.includes('developer') || role.includes('dev')) return 'Dev Team';
   if (role.includes('qa') || role.includes('design')) return 'QA & Design';
   if (role.includes('lead') || role.includes('research')) return 'Leadership';
   if (role.includes('devops')) return 'Ops';
   return 'Personal Assistants';
+}
+
+function getTeamKey(agent: Agent): string {
+  const teamTitle = getTeam(agent);
+  const team = TEAM_DEFINITIONS.find((def) => def.title === teamTitle);
+  return team?.key ?? 'personal-assistants';
+}
+
+function TeamTabs({
+  activeTeam,
+  onTeamChange,
+  agentCounts,
+}: {
+  activeTeam: string;
+  onTeamChange: (team: string) => void;
+  agentCounts: Record<string, number>;
+}) {
+  return (
+    <div className="flex overflow-x-auto gap-2 px-4 py-3 touch-pan-x border-b border-mc-border/50">
+      <button
+        onClick={() => onTeamChange('all')}
+        className={`px-3 py-1.5 rounded text-xs font-medium whitespace-nowrap transition-colors ${
+          activeTeam === 'all'
+            ? 'bg-mc-accent text-mc-bg'
+            : 'bg-mc-bg-secondary text-mc-text-secondary hover:bg-mc-bg-tertiary'
+        }`}
+      >
+        All ({Object.values(agentCounts).reduce((sum, count) => sum + count, 0)})
+      </button>
+      {TEAM_DEFINITIONS.map((team) => (
+        <button
+          key={team.key}
+          onClick={() => onTeamChange(team.key)}
+          className={`px-3 py-1.5 rounded text-xs font-medium whitespace-nowrap transition-colors ${
+            activeTeam === team.key
+              ? 'bg-mc-accent text-mc-bg'
+              : 'bg-mc-bg-secondary text-mc-text-secondary hover:bg-mc-bg-tertiary'
+          }`}
+        >
+          {team.title} ({agentCounts[team.title] ?? 0})
+        </button>
+      ))}
+    </div>
+  );
 }
 
 const TEAM_EMOJI: Record<string, string> = {
@@ -421,6 +466,7 @@ interface PixelOfficeProps {
 
 export function PixelOffice({ workspaceId }: PixelOfficeProps) {
   const { agents, tasks, setSelectedTask } = useMissionControl();
+  const [activeTeam, setActiveTeam] = useState<string>('all');
 
   // OpenClaw agents (all 16)
   const [openclawAgents, setOpenclawAgents] = useState<{ id: string; name: string; model: { primary: string }; channels: { channel: string }[] }[]>([]);
@@ -585,13 +631,31 @@ export function PixelOffice({ workspaceId }: PixelOfficeProps) {
     }
   }
 
+  // Compute agent counts per team (before filtering)
+  const allDisplayAgents = [...displayWorking, ...displayIdle];
+  const agentCounts: Record<string, number> = {};
+  for (const def of TEAM_DEFINITIONS) {
+    agentCounts[def.title] = allDisplayAgents.filter(a => getTeamKey(a) === def.key).length;
+  }
+
+  // Filter by active team
+  const filterByTeam = (agents: Agent[]) => {
+    if (activeTeam === 'all') return agents;
+    return agents.filter(a => getTeamKey(a) === activeTeam);
+  };
+  const filteredWorking = filterByTeam(displayWorking);
+  const filteredIdle = filterByTeam(displayIdle);
+
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
+      {/* Team filter tabs */}
+      <TeamTabs activeTeam={activeTeam} onTeamChange={setActiveTeam} agentCounts={agentCounts} />
+
       {/* Office area */}
-      <div className="flex-1 flex items-center justify-center p-8 pt-24 overflow-auto relative">
+      <div className="flex-1 flex items-center justify-center p-8 pt-12 overflow-auto relative">
         <OfficeScene
-          workingAgents={displayWorking}
-          idleAgents={displayIdle}
+          workingAgents={filteredWorking}
+          idleAgents={filteredIdle}
           getTaskInfo={getTaskInfo}
           onTaskClick={(taskId) => {
             const task = tasks.find(t => t.id === taskId);

@@ -1,38 +1,8 @@
 import { Agent, Conversation, ConversationParticipant } from '@/lib/db';
-
-export interface TeamDefinition {
-  key: string;
-  title: string;
-  members: string[];
-}
-
-export const TEAM_DEFINITIONS: TeamDefinition[] = [
-  {
-    key: 'dev-team',
-    title: 'Dev Team',
-    members: ['Developer', 'Middle Developer', 'Codex Developer', 'Junior Developer', 'BettyDev', 'betty99dev', 'Mobile Dev'],
-  },
-  {
-    key: 'qa-design',
-    title: 'QA & Design',
-    members: ['QA', 'betty99qa', 'Designer'],
-  },
-  {
-    key: 'leadership',
-    title: 'Leadership',
-    members: ['Team Lead Betty', 'Researcher'],
-  },
-  {
-    key: 'personal-assistants',
-    title: 'Personal Assistants',
-    members: ['Betty99bot', 'Betty99Shopping', 'betty99coach', 'betty99budget', 'betty99events', 'betty99doctor'],
-  },
-  {
-    key: 'ops',
-    title: 'Ops',
-    members: ['bettydevops', 'devops'],
-  },
-];
+import { TEAM_DEFINITIONS } from '@/lib/teamDefinitions';
+import type { TeamDefinition } from '@/lib/teamDefinitions';
+export { TEAM_DEFINITIONS };
+export type { TeamDefinition };
 
 export async function ensureTeamConversations(): Promise<void> {
   const titleToConversation = new Map<string, any>();

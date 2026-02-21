@@ -3,7 +3,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { connectDb, Task, Agent, Event, OpenclawSession, Conversation, TaskActivity } from '@/lib/db';
 import { broadcast } from '@/lib/events';
 import { getMissionControlUrl } from '@/lib/config';
-import type { Task as TaskType, UpdateTaskRequest, Agent as AgentType } from '@/lib/types';
+import type { Task as TaskType, UpdateTaskRequest, Agent as AgentType, ActivityMetadata } from '@/lib/types';
 
 async function getTaskWithAgents(id: string) {
   const task = await Task.findById(id).lean() as any;
@@ -18,6 +18,25 @@ async function getTaskWithAgents(id: string) {
     if (ca) { result.created_by_agent_name = ca.name; result.created_by_agent_emoji = ca.avatar_emoji; }
   }
   return result;
+}
+
+function normalizeModel(model?: string | null): string {
+  if (!model) return 'unknown';
+  const aliasMap: Record<string, string> = {
+    'z-ai/glm-5': 'glm-5',
+    'anthropic/claude-haiku-4-5': 'haiku',
+    'anthropic/claude-sonnet-4-5': 'sonnet',
+    'openai-codex/gpt-5.3-codex': 'codex',
+  };
+  return aliasMap[model] || model;
+}
+
+function buildActivityMetadata(model?: string | null): ActivityMetadata {
+  return {
+    model: normalizeModel(model),
+    tokens_in: 0,
+    tokens_out: 0,
+  };
 }
 
 // GET /api/tasks/[id]
@@ -97,17 +116,38 @@ export async function PATCH(
       }
     }
 
+    let assignmentAgent: any = null;
     if (body.assigned_agent_id !== undefined && body.assigned_agent_id !== existing.assigned_agent_id) {
       updates.assigned_agent_id = body.assigned_agent_id;
       if (body.assigned_agent_id) {
         const agent = await Agent.findById(body.assigned_agent_id).lean() as any;
         if (agent) {
+          assignmentAgent = agent;
           await Event.create({
             _id: uuidv4(), type: 'task_assigned', agent_id: body.assigned_agent_id, task_id: id,
             message: `"${existing.title}" assigned to ${agent.name}`, created_at: now,
           });
           if (existing.status === 'assigned' || body.status === 'assigned') shouldDispatch = true;
         }
+      }
+    }
+
+    const willBeAssigned = (body.status ?? existing.status) === 'assigned';
+    const isInboxToAssigned = existing.status === 'inbox' && willBeAssigned;
+    const assignedAgentId = (updates.assigned_agent_id as string | undefined) || existing.assigned_agent_id;
+
+    if (isInboxToAssigned && assignedAgentId) {
+      const agent = assignmentAgent || await Agent.findById(assignedAgentId).lean() as any;
+      if (agent) {
+        await TaskActivity.create({
+          _id: uuidv4(),
+          task_id: id,
+          agent_id: assignedAgentId,
+          activity_type: 'status_changed',
+          message: `Task assigned to ${agent.name} [${normalizeModel(agent.model)}]`,
+          metadata: buildActivityMetadata(agent.model),
+          created_at: now,
+        });
       }
     }
 
