@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Plus, ChevronRight, GripVertical } from 'lucide-react';
 import { useMissionControl } from '@/lib/store';
 import type { Task, TaskStatus } from '@/lib/types';
@@ -37,13 +37,27 @@ function timeAgo(dateString: string): string {
 }
 
 export function MissionQueue({ workspaceId }: MissionQueueProps) {
-  const { tasks, updateTaskStatus, addEvent } = useMissionControl();
+  const { tasks, agents, updateTaskStatus, addEvent } = useMissionControl();
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [draggedTask, setDraggedTask] = useState<Task | null>(null);
+  const [selectedAgentId, setSelectedAgentId] = useState<string>('all');
+  const [searchQuery, setSearchQuery] = useState('');
+
+  const filteredTasks = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase();
+
+    return tasks.filter((task) => {
+      const matchesAgent =
+        selectedAgentId === 'all' || task.assigned_agent_id === selectedAgentId;
+      const matchesSearch = !query || task.title.toLowerCase().includes(query);
+
+      return matchesAgent && matchesSearch;
+    });
+  }, [tasks, selectedAgentId, searchQuery]);
 
   const getTasksByStatus = (status: TaskStatus) =>
-    tasks.filter((task) => task.status === status);
+    filteredTasks.filter((task) => task.status === status);
 
   const handleDragStart = (e: React.DragEvent, task: Task) => {
     setDraggedTask(task);
@@ -108,6 +122,30 @@ export function MissionQueue({ workspaceId }: MissionQueueProps) {
           <span className="hidden sm:inline">New Task</span>
           <span className="sm:hidden">New</span>
         </button>
+      </div>
+
+      {/* Filters */}
+      <div className="p-2 md:p-3 border-b border-mc-border flex flex-col sm:flex-row gap-2">
+        <select
+          value={selectedAgentId}
+          onChange={(e) => setSelectedAgentId(e.target.value)}
+          className="bg-mc-bg-secondary border border-mc-border/50 rounded px-2.5 py-1.5 text-xs md:text-sm text-mc-text min-w-[180px]"
+        >
+          <option value="all">All agents</option>
+          {agents.map((agent) => (
+            <option key={agent.id} value={agent.id}>
+              {agent.avatar_emoji} {agent.name}
+            </option>
+          ))}
+        </select>
+
+        <input
+          type="text"
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          placeholder="Search task title..."
+          className="bg-mc-bg-secondary border border-mc-border/50 rounded px-2.5 py-1.5 text-xs md:text-sm text-mc-text placeholder:text-mc-text-secondary flex-1"
+        />
       </div>
 
       {/* Kanban Columns - with mobile optimizations */}
