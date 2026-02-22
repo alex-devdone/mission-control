@@ -117,9 +117,11 @@ export class OpenClawClient extends EventEmitter {
                   client: {
                     id: 'gateway-client',
                     version: '1.0.0',
-                    platform: 'web',
-                    mode: 'ui'
+                    platform: 'darwin',
+                    mode: 'backend'
                   },
+                  role: 'operator',
+                  scopes: ['operator.read', 'operator.write', 'operator.admin'],
                   auth: {
                     token: this.token
                   }

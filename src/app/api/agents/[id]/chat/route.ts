@@ -50,11 +50,8 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       (s.key || '').toLowerCase().startsWith(agentPrefix)
     );
 
-    if (!agentSession) {
-      return NextResponse.json({ history: [], sessionKey: null, debug: { agentPrefix, sessionCount: allSessions.length } });
-    }
-
-    const sessionKey = agentSession.key;
+    // Use existing session or construct the expected main session key
+    const sessionKey = agentSession?.key || `agent:${agent.openclaw_agent_id}:main`;
 
     try {
       const history = await client.call('chat.history', { sessionKey, limit: 50 });
@@ -62,7 +59,8 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ history: messages, sessionKey });
     } catch (e) {
       console.error('Failed to get session history:', e);
-      return NextResponse.json({ history: [], sessionKey, error: String(e) });
+      // Return empty history but still provide sessionKey so user can send messages
+      return NextResponse.json({ history: [], sessionKey });
     }
   } catch (error) {
     console.error('Failed to get agent chat:', error);
@@ -117,11 +115,8 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       (s.key || '').toLowerCase().startsWith(agentPrefix)
     );
 
-    if (!agentSession) {
-      return NextResponse.json({ error: 'Agent has no active OpenClaw session' }, { status: 404 });
-    }
-
-    const sessionKey = agentSession.key;
+    // Use existing session or construct the expected main session key
+    const sessionKey = agentSession?.key || `agent:${agent.openclaw_agent_id}:main`;
 
     await client.call('sessions.send', {
       sessionKey,

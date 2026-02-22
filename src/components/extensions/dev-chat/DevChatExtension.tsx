@@ -8,7 +8,8 @@ import { buildDevChatContextPrefix, matchAgent } from './utils';
 
 export function DevChatExtension({ config, resolveAgent }: DevChatExtensionProps) {
   const isDev = process.env.NODE_ENV === 'development';
-  const shouldRender = (config.enableInDevOnly ?? true ? isDev : true) && (config.enabled ?? true);
+  // If enableInDevOnly is false, allow in prod; otherwise follow isDev
+  const shouldRender = (config.enableInDevOnly === false ? true : isDev) && (config.enabled ?? true);
 
   const [open, setOpen] = useState(false);
   const [agent, setAgent] = useState<Agent | null>(null);
@@ -196,9 +197,9 @@ export function DevChatExtension({ config, resolveAgent }: DevChatExtensionProps
               <input
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
-                placeholder={sessionKey ? `Message ${agent?.name || 'agent'}...` : 'No active session'}
+                placeholder={sessionKey ? `Message ${agent?.name || 'agent'}...` : `Start chat with ${agent?.name || 'agent'}...`}
                 className="flex-1 bg-mc-bg border border-mc-border rounded px-3 py-2 text-xs focus:outline-none focus:border-mc-accent"
-                disabled={sending || !sessionKey}
+                disabled={sending}
               />
               <button
                 type="submit"

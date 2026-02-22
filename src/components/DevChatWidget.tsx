@@ -29,8 +29,8 @@ export function DevChatWidget() {
   const widgetEnabled = process.env.NEXT_PUBLIC_DEV_WIDGET_ENABLED !== 'false';
   // Prod visibility: when true, widget can show in production (if widgetEnabled)
   const showInProd = process.env.NEXT_PUBLIC_DEV_WIDGET_SHOW_IN_PROD === 'true';
-  // Final gate: dev mode OR explicit prod permission
-  const enableInDevOnly = isDev ? true : !showInProd;
+  // Final gate: pass false to allow in prod when showInProd=true
+  const enableInDevOnly = !showInProd;
 
   return (
     <DevChatWidgetErrorBoundary>
