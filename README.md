@@ -216,6 +216,45 @@ NEXT_PUBLIC_DEV_WIDGET_ENABLED=true
 NEXT_PUBLIC_DEV_WIDGET_ENABLED=false
 ```
 
+### Reusable Dev Chat Extension (for other apps)
+
+Reusable module lives in:
+- `src/components/extensions/dev-chat/types.ts`
+- `src/components/extensions/dev-chat/DevChatExtension.tsx`
+- `src/components/extensions/dev-chat/index.ts`
+
+Minimal integration example:
+
+```tsx
+import { DevChatExtension } from '@/components/extensions/dev-chat';
+
+export function MyAppDevWidget() {
+  return (
+    <DevChatExtension
+      config={{
+        target: { name: 'myDevAgent', openclawAgentId: 'myDevAgent' },
+        context: {
+          app: 'my-app',
+          appPath: '/Users/betty/work/my-app',
+          cwd: '/Users/betty/work/my-app',
+          source: 'dev-widget',
+        },
+        enableInDevOnly: true,
+        enabled: process.env.NEXT_PUBLIC_DEV_WIDGET_ENABLED !== 'false',
+      }}
+    />
+  );
+}
+```
+
+Required config fields:
+- `target` (`name` and/or `openclawAgentId`)
+- `context` (`app`, `appPath`, `cwd`, `source`)
+- optional UX fields: `title`, `emptyMessage`
+- optional gates: `enableInDevOnly`, `enabled`
+
+The extension reuses Mission Control's existing `/api/agents/[id]/chat` routing and prepends the configured `[Dev Chat Context] ...` prefix on each message.
+
 ### OpenClaw Configuration
 
 Your OpenClaw config lives at `~/.openclaw/openclaw.json`. Key settings:
