@@ -202,19 +202,32 @@ You can drag tasks between columns manually, or let the system auto-advance them
 | `OPENCLAW_GATEWAY_URL` | Yes | `ws://127.0.0.1:18789` | WebSocket URL to OpenClaw Gateway |
 | `OPENCLAW_GATEWAY_TOKEN` | Yes | - | Authentication token for OpenClaw |
 | `PORT` | No | `17789` | Port for Mission Control web server |
-| `NEXT_PUBLIC_DEV_WIDGET_ENABLED` | No | `true` | Toggle Dev Chat Widget in development mode. Set to `false` to hide widget |
+| `NEXT_PUBLIC_DEV_WIDGET_ENABLED` | No | `true` | Master toggle for Dev Chat Widget. Set to `false` to hide widget in all environments |
+| `NEXT_PUBLIC_DEV_WIDGET_SHOW_IN_PROD` | No | `false` | Allow widget in production mode. Set to `true` to show widget in production |
 
 ### Dev Chat Widget Toggle
 
-The Dev Chat Widget (visible in development mode only) can be controlled via environment variable:
+The Dev Chat Widget can be controlled via two environment variables:
 
 ```env
-# Show widget in dev (default when unset)
-NEXT_PUBLIC_DEV_WIDGET_ENABLED=true
+# Master toggle (default: true)
+NEXT_PUBLIC_DEV_WIDGET_ENABLED=true   # Widget follows mode rules
+NEXT_PUBLIC_DEV_WIDGET_ENABLED=false  # Widget hidden everywhere
 
-# Hide widget in dev
-NEXT_PUBLIC_DEV_WIDGET_ENABLED=false
+# Production visibility (default: false)
+NEXT_PUBLIC_DEV_WIDGET_SHOW_IN_PROD=true   # Widget visible in production
+NEXT_PUBLIC_DEV_WIDGET_SHOW_IN_PROD=false  # Widget hidden in production
 ```
+
+**Visibility Matrix:**
+
+| ENV | MODE | SHOW_IN_PROD | Result |
+|-----|------|--------------|--------|
+| unset/true | dev | any | ✅ Visible |
+| false | dev | any | ❌ Hidden |
+| unset/true | prod | false | ❌ Hidden |
+| unset/true | prod | true | ✅ Visible |
+| false | prod | true | ❌ Hidden |
 
 ### Reusable Dev Chat Extension (for other apps)
 

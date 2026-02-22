@@ -24,7 +24,13 @@ class DevChatWidgetErrorBoundary extends React.Component<React.PropsWithChildren
 }
 
 export function DevChatWidget() {
+  const isDev = process.env.NODE_ENV === 'development';
+  // Master toggle: when 'false', widget is completely disabled
   const widgetEnabled = process.env.NEXT_PUBLIC_DEV_WIDGET_ENABLED !== 'false';
+  // Prod visibility: when true, widget can show in production (if widgetEnabled)
+  const showInProd = process.env.NEXT_PUBLIC_DEV_WIDGET_SHOW_IN_PROD === 'true';
+  // Final gate: dev mode OR explicit prod permission
+  const enableInDevOnly = isDev ? true : !showInProd;
 
   return (
     <DevChatWidgetErrorBoundary>
@@ -42,7 +48,7 @@ export function DevChatWidget() {
             cwd: '/Users/betty/work/mission-control',
             source: 'dev-widget',
           },
-          enableInDevOnly: true,
+          enableInDevOnly,
           enabled: widgetEnabled,
         }}
       />
