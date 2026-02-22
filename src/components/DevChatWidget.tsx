@@ -14,7 +14,11 @@ const DEV_CONTEXT = '[Dev Chat Context] app=mission-control; appPath=/Users/bett
 
 export function DevChatWidget() {
   const isDev = process.env.NODE_ENV === 'development';
+  // Feature flag: allow disabling widget in dev via NEXT_PUBLIC_DEV_WIDGET_ENABLED=false
+  const widgetEnabled = process.env.NEXT_PUBLIC_DEV_WIDGET_ENABLED !== 'false';
+  const shouldRender = isDev && widgetEnabled;
 
+  // All hooks must be called unconditionally
   const [open, setOpen] = useState(false);
   const [agent, setAgent] = useState<Agent | null>(null);
   const [loadingAgent, setLoadingAgent] = useState(false);
@@ -89,9 +93,11 @@ export function DevChatWidget() {
   };
 
   useEffect(() => {
+    // Only load history when widget is enabled and opened
+    if (!shouldRender) return;
     if (open) void loadHistory();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open]);
+  }, [open, shouldRender]);
 
   const send = async () => {
     const content = input.trim();
@@ -125,7 +131,8 @@ export function DevChatWidget() {
     }
   };
 
-  if (!isDev) return null;
+  // Early return after all hooks - prevents rendering when disabled
+  if (!shouldRender) return null;
 
   return (
     <>

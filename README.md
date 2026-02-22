@@ -202,6 +202,19 @@ You can drag tasks between columns manually, or let the system auto-advance them
 | `OPENCLAW_GATEWAY_URL` | Yes | `ws://127.0.0.1:18789` | WebSocket URL to OpenClaw Gateway |
 | `OPENCLAW_GATEWAY_TOKEN` | Yes | - | Authentication token for OpenClaw |
 | `PORT` | No | `17789` | Port for Mission Control web server |
+| `NEXT_PUBLIC_DEV_WIDGET_ENABLED` | No | `true` | Toggle Dev Chat Widget in development mode. Set to `false` to hide widget |
+
+### Dev Chat Widget Toggle
+
+The Dev Chat Widget (visible in development mode only) can be controlled via environment variable:
+
+```env
+# Show widget in dev (default when unset)
+NEXT_PUBLIC_DEV_WIDGET_ENABLED=true
+
+# Hide widget in dev
+NEXT_PUBLIC_DEV_WIDGET_ENABLED=false
+```
 
 ### OpenClaw Configuration
 
