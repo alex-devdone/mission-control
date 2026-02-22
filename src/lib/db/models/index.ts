@@ -14,3 +14,5 @@ export { ConversationParticipant } from './ConversationParticipant';
 export { Message } from './Message';
 export { Business } from './Business';
 export { SessionToken } from './SessionToken';
+export { HeartbeatRun } from './HeartbeatRun';
+export { CronRun } from './CronRun';

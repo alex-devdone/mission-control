@@ -399,7 +399,7 @@ export function SchedulerView() {
 
   // Day view: runs for selected date
   const dayRuns = useMemo(() =>
-    filteredTimeline.filter(r => isSameDay(new Date(r.runAt), selectedDate)).sort((a, b) => a.ts - b.ts),
+    filteredTimeline.filter(r => isSameDay(new Date(r.runAt), selectedDate)).sort((a, b) => b.ts - a.ts),
     [filteredTimeline, selectedDate]
   );
 

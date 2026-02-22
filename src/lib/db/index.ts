@@ -25,4 +25,4 @@ export async function closeDb(): Promise<void> {
 }
 
 // Re-export all models
-export { Agent, Task, App, Event, OpenclawSession, AgentSnapshot, TaskActivity, TaskDeliverable, Workspace, PlanningQuestion, PlanningSpec, Conversation, ConversationParticipant, Message, Business } from './models';
+export { Agent, Task, App, Event, OpenclawSession, AgentSnapshot, TaskActivity, TaskDeliverable, Workspace, PlanningQuestion, PlanningSpec, Conversation, ConversationParticipant, Message, Business, HeartbeatRun, CronRun } from './models';

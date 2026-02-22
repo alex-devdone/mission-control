@@ -1,19 +1,44 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { Users, Calendar, Cpu } from 'lucide-react';
+import { useState, useEffect, useCallback, Suspense } from 'react';
+import { useSearchParams, useRouter } from 'next/navigation';
+import { Users, Calendar, Cpu, Heart } from 'lucide-react';
 import { Header } from '@/components/Header';
 import { ObservatoryAgents } from '@/components/ObservatoryAgents';
 import { SchedulerView } from '@/components/SchedulerView';
 import { ModelsOverview } from '@/components/ModelsOverview';
+import { HeartbeatView } from '@/components/HeartbeatView';
 import { MobileBottomNav } from '@/components/MobileBottomNav';
 import { useMissionControl } from '@/lib/store';
 
-type Tab = 'agents' | 'schedulers' | 'models';
+type Tab = 'agents' | 'schedulers' | 'models' | 'heartbeats';
+const VALID_TABS: Tab[] = ['agents', 'schedulers', 'models', 'heartbeats'];
 
-export default function ObservatoryPage() {
-  const [tab, setTab] = useState<Tab>('agents');
+const tabsDef = [
+  { id: 'agents' as const, label: 'Agents', icon: Users },
+  { id: 'schedulers' as const, label: 'Schedulers', icon: Calendar },
+  { id: 'models' as const, label: 'Models', icon: Cpu },
+  { id: 'heartbeats' as const, label: 'Heartbeats', icon: Heart },
+];
+
+function ObservatoryContent() {
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const paramTab = searchParams.get('tab');
+  const initialTab = VALID_TABS.includes(paramTab as Tab) ? (paramTab as Tab) : 'agents';
+  const [tab, setTab] = useState<Tab>(initialTab);
   const { setIsOnline } = useMissionControl();
+
+  // Sync state when URL changes (back/forward)
+  useEffect(() => {
+    const t = searchParams.get('tab');
+    if (t && VALID_TABS.includes(t as Tab)) setTab(t as Tab);
+  }, [searchParams]);
+
+  const changeTab = useCallback((t: Tab) => {
+    setTab(t);
+    router.replace(`/observatory?tab=${t}`, { scroll: false });
+  }, [router]);
 
   // Check OpenClaw connection status
   useEffect(() => {
@@ -37,22 +62,14 @@ export default function ObservatoryPage() {
     return () => clearInterval(interval);
   }, [setIsOnline]);
 
-  const tabs = [
-    { id: 'agents' as const, label: 'Agents', icon: Users },
-    { id: 'schedulers' as const, label: 'Schedulers', icon: Calendar },
-    { id: 'models' as const, label: 'Models', icon: Cpu },
-  ];
-
   return (
-    <div className="min-h-screen bg-mc-bg text-mc-text">
-      <Header pageName="observatory" />
-
+    <>
       <div className="border-b border-mc-border bg-mc-bg-secondary px-4">
         <div className="flex gap-1">
-          {tabs.map(t => (
+          {tabsDef.map(t => (
             <button
               key={t.id}
-              onClick={() => setTab(t.id)}
+              onClick={() => changeTab(t.id)}
               className={`flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium transition-colors border-b-2 ${
                 tab === t.id
                   ? 'text-mc-accent border-mc-accent'
@@ -69,8 +86,19 @@ export default function ObservatoryPage() {
         {tab === 'agents' && <ObservatoryAgents />}
         {tab === 'schedulers' && <SchedulerView />}
         {tab === 'models' && <ModelsOverview />}
+        {tab === 'heartbeats' && <HeartbeatView />}
       </main>
+    </>
+  );
+}
 
+export default function ObservatoryPage() {
+  return (
+    <div className="min-h-screen bg-mc-bg text-mc-text">
+      <Header pageName="observatory" />
+      <Suspense>
+        <ObservatoryContent />
+      </Suspense>
       <MobileBottomNav />
     </div>
   );
