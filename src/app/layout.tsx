@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import './globals.css';
 import { MobileBottomNav } from '@/components/MobileBottomNav';
 import { Providers } from '@/components/Providers';
+import { DevChatWidget } from '@/components/DevChatWidget';
 
 export const metadata: Metadata = {
   title: 'Mission Control',
@@ -28,6 +29,7 @@ export default function RootLayout({
         <Providers>
           {children}
           <MobileBottomNav />
+          <DevChatWidget />
         </Providers>
       </body>
     </html>
